@@ -21,7 +21,7 @@ def train():
     ### initialize dataset
     data_loader = CreateDataLoader(opt)
     dataset = data_loader.load_data()
-    dataset_size = len(data_loader)    
+    dataset_size = len(data_loader)
     print('#training videos = %d' % dataset_size)
 
     ### initialize models
@@ -33,10 +33,10 @@ def train():
         start_epoch, epoch_iter, print_freq, total_steps, iter_path = init_params(opt, modelG, modelD, data_loader)
     visualizer = Visualizer(opt)    
 
-    ### real training starts here  
+    ### real training starts here
     for epoch in range(start_epoch, opt.niter + opt.niter_decay + 1):
-        epoch_start_time = time.time()    
-        for idx, data in enumerate(dataset, start=epoch_iter):        
+        epoch_start_time = time.time()
+        for idx, data in enumerate(dataset, start=epoch_iter):
             if total_steps % print_freq == 0:
                 iter_start_time = time.time()
             total_steps += opt.batchSize
@@ -49,7 +49,7 @@ def train():
 
             for i in range(0, n_frames_total, n_frames_load):
                 input_A, input_B, inst_A = data_loader.dataset.prepare_data(data, i, input_nc, output_nc)
-                
+
                 ###################################### Forward Pass ##########################
                 ####### generator                  
                 fake_B, fake_B_raw, flow, weight, real_A, real_Bp, fake_B_last = modelG(input_A, input_B, inst_A, fake_B_prev_last)
@@ -60,7 +60,7 @@ def train():
                 flow_ref, conf_ref = flowNet(real_B, real_B_prev)       # reference flows and confidences                
                 fake_B_prev = modelG.module.compute_fake_B_prev(real_B_prev, fake_B_prev_last, fake_B)
                 fake_B_prev_last = fake_B_last
-               
+
                 losses = modelD(0, reshape([real_B, fake_B, fake_B_raw, real_A, real_B_prev, fake_B_prev, flow, weight, flow_ref, conf_ref]))
                 losses = [ torch.mean(x) if x is not None else 0 for x in losses ]
                 loss_dict = dict(zip(modelD.module.loss_names, losses))
@@ -72,10 +72,10 @@ def train():
 
                 # run discriminator for each temporal scale
                 loss_dict_T = []
-                for s in range(t_scales):                
-                    if frames_skipped[0][s] is not None:                        
+                for s in range(t_scales):
+                    if frames_skipped[0][s] is not None:    
                         losses = modelD(s+1, [frame_skipped[s] for frame_skipped in frames_skipped])
-                        losses = [ torch.mean(x) if not isinstance(x, int) else x for x in losses ]
+                        losses = [x if isinstance(x, int) else torch.mean(x) for x in losses]
                         loss_dict_T.append(dict(zip(modelD.module.loss_names_T, losses)))
 
                 # collect losses
@@ -101,9 +101,15 @@ def train():
             ### print out errors
             if total_steps % print_freq == 0:
                 t = (time.time() - iter_start_time) / print_freq
-                errors = {k: v.data.item() if not isinstance(v, int) else v for k, v in loss_dict.items()}
+                errors = {
+                    k: v if isinstance(v, int) else v.data.item()
+                    for k, v in loss_dict.items()
+                }
                 for s in range(len(loss_dict_T)):
-                    errors.update({k+str(s): v.data.item() if not isinstance(v, int) else v for k, v in loss_dict_T[s].items()})            
+                    errors |= {
+                        k + str(s): v if isinstance(v, int) else v.data.item()
+                        for k, v in loss_dict_T[s].items()
+                    }
                 visualizer.print_current_errors(epoch, epoch_iter, errors, t)
                 visualizer.plot_current_errors(errors, total_steps)
 
@@ -113,11 +119,11 @@ def train():
                 visualizer.display_current_results(visuals, epoch, total_steps)
 
             ### save latest model
-            save_models(opt, epoch, epoch_iter, total_steps, visualizer, iter_path, modelG, modelD)            
+            save_models(opt, epoch, epoch_iter, total_steps, visualizer, iter_path, modelG, modelD)
             if epoch_iter > dataset_size - opt.batchSize:
                 epoch_iter = 0
                 break
-           
+
         # end of epoch 
         iter_end_time = time.time()
         visualizer.vis_print('End of epoch %d / %d \t Time Taken: %d sec' %

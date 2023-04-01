@@ -23,21 +23,17 @@ def get_pretrained_net(name):
         if not os.path.exists('vgg19-caffe-py3.pth'):
             print('Downloading VGG-19')
             os.system('wget -O vgg19-caffe-py3.pth --no-check-certificate -nc https://box.skoltech.ru/index.php/s/HPcOFQTjXxbmp4X/download')
-        
-        vgg = get_vgg19_caffe()
-        
-        return vgg
+
+        return get_vgg19_caffe()
     elif name == 'vgg16_caffe':
         if not os.path.exists('vgg16-caffe-py3.pth'):
             print('Downloading VGG-16')
             os.system('wget -O vgg16-caffe-py3.pth --no-check-certificate -nc https://box.skoltech.ru/index.php/s/TUZ62HnPKWdxyLr/download')
-        
-        vgg = get_vgg16_caffe()
-        
-        return vgg
+
+        return get_vgg16_caffe()
     elif name == 'vgg19_pytorch_modified':
         # os.system('wget -O data/feature_inversion/vgg19-caffe.pth --no-check-certificate -nc https://www.dropbox.com/s/xlbdo688dy4keyk/vgg19-caffe.pth?dl=1')
-        
+
         model = VGGModified(vgg19(pretrained=False), 0.2)
         model.load_state_dict(torch.load('vgg_pytorch_modified.pkl')['state_dict'])
 
@@ -85,11 +81,11 @@ class PerceputalLoss(nn.modules.loss._Loss):
         # for 
         self.matcher_content.mode = 'store'
         self.net(self.preprocess_input(y));
-        
+
         self.matcher_content.mode = 'match'
         self.net(self.preprocess_input(x));
-        
-        return sum([sum(matcher.losses.values()) for matcher in self.matchers])
+
+        return sum(sum(matcher.losses.values()) for matcher in self.matchers)
 
 
 def get_vgg19_caffe():
@@ -156,7 +152,7 @@ def get_matcher(vgg, opt):
 def get_vgg(cut_idx=-1, vgg_type='pytorch'):
     f = get_vanilla_vgg_features(cut_idx, vgg_type)
 
-    keys = [x for x in cnn._modules.keys()]
+    keys = list(cnn._modules.keys())
     max_idx = max(keys.index(x) for x in opt_content['layers'].split(','))
     for k in keys[max_idx+1:]:
         cnn._modules.pop(k)
@@ -167,8 +163,7 @@ vgg_mean = torch.FloatTensor([103.939, 116.779, 123.680]).view(3, 1, 1)
 def vgg_preprocess_caffe(var):
     (r, g, b) = torch.chunk(var, 3, dim=1)
     bgr = torch.cat((b, g, r), 1)
-    out = bgr * 255 - torch.autograd.Variable(vgg_mean).type(var.type())
-    return out
+    return bgr * 255 - torch.autograd.Variable(vgg_mean).type(var.type())
 
 
 

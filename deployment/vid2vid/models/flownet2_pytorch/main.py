@@ -171,10 +171,7 @@ if __name__ == '__main__':
 
                 loss_values = self.loss(output, target)
 
-                if not inference :
-                    return loss_values
-                else :
-                    return loss_values, output
+                return (loss_values, output) if inference else loss_values
 
         model_and_loss = ModelAndLoss(args)
 
@@ -247,12 +244,12 @@ if __name__ == '__main__':
 
         if is_validate:
             model.eval()
-            title = 'Validating Epoch {}'.format(epoch)
+            title = f'Validating Epoch {epoch}'
             args.validation_n_batches = np.inf if args.validation_n_batches < 0 else args.validation_n_batches
             progress = tqdm(tools.IteratorTimer(data_loader), ncols=100, total=np.minimum(len(data_loader), args.validation_n_batches), leave=True, position=offset, desc=title)
         else:
             model.train()
-            title = 'Training Epoch {}'.format(epoch)
+            title = f'Training Epoch {epoch}'
             args.train_n_batches = np.inf if args.train_n_batches < 0 else args.train_n_batches
             progress = tqdm(tools.IteratorTimer(data_loader), ncols=120, total=np.minimum(len(data_loader), args.train_n_batches), smoothing=.9, miniters=1, leave=True, position=offset, desc=title)
 
@@ -263,9 +260,9 @@ if __name__ == '__main__':
             if args.cuda and args.number_gpus == 1:
                 data, target = [d.cuda(async=True) for d in data], [t.cuda(async=True) for t in target]
 
-            optimizer.zero_grad() if not is_validate else None
+            None if is_validate else optimizer.zero_grad()
             losses = model(data[0], target[0])
-            losses = [torch.mean(loss_value) for loss_value in losses] 
+            losses = [torch.mean(loss_value) for loss_value in losses]
             loss_val = losses[0] # Collect first loss for weight update
             total_loss += loss_val.data[0]
             loss_values = [v.data[0] for v in losses]
@@ -306,14 +303,16 @@ if __name__ == '__main__':
 
             # Print out statistics
             statistics.append(loss_values)
-            title = '{} Epoch {}'.format('Validating' if is_validate else 'Training', epoch)
+            title = f"{'Validating' if is_validate else 'Training'} Epoch {epoch}"
 
-            progress.set_description(title + ' ' + tools.format_dictionary_of_losses(loss_labels, statistics[-1]))
+            progress.set_description(
+                f'{title} {tools.format_dictionary_of_losses(loss_labels, statistics[-1])}'
+            )
 
             if ((((global_iteration + 1) % args.log_frequency) == 0 and not is_validate) or
                 (is_validate and batch_idx == args.validation_n_batches - 1)):
 
-                global_iteration = global_iteration if not is_validate else start_iteration
+                global_iteration = start_iteration if is_validate else global_iteration
 
                 logger.add_scalar('batch logs per second', len(statistics) / (progress._time() - last_log_time), global_iteration)
                 last_log_time = progress._time()
@@ -321,7 +320,11 @@ if __name__ == '__main__':
                 all_losses = np.array(statistics)
 
                 for i, key in enumerate(loss_labels):
-                    logger.add_scalar('average batch ' + str(key), all_losses[:, i].mean(), global_iteration)
+                    logger.add_scalar(
+                        f'average batch {str(key)}',
+                        all_losses[:, i].mean(),
+                        global_iteration,
+                    )
                     logger.add_histogram(str(key), all_losses[:, i], global_iteration)
 
             # Reset Summary
@@ -341,13 +344,13 @@ if __name__ == '__main__':
     def inference(args, epoch, data_loader, model, offset=0):
 
         model.eval()
-        
+
         if args.save_flow or args.render_validation:
-            flow_folder = "{}/inference/{}.epoch-{}-flow-field".format(args.save,args.name.replace('/', '.'),epoch)
+            flow_folder = f"{args.save}/inference/{args.name.replace('/', '.')}.epoch-{epoch}-flow-field"
             if not os.path.exists(flow_folder):
                 os.makedirs(flow_folder)
 
-        
+
         args.inference_n_batches = np.inf if args.inference_n_batches < 0 else args.inference_n_batches
 
         progress = tqdm(data_loader, ncols=100, total=np.minimum(len(data_loader), args.inference_n_batches), desc='Inferencing ', 
@@ -366,7 +369,7 @@ if __name__ == '__main__':
             with torch.no_grad():
                 losses, output = model(data[0], target[0], inference=True)
 
-            losses = [torch.mean(loss_value) for loss_value in losses] 
+            losses = [torch.mean(loss_value) for loss_value in losses]
             loss_val = losses[0] # Collect first loss for weight update
             total_loss += loss_val.data[0]
             loss_values = [v.data[0] for v in losses]
@@ -381,7 +384,9 @@ if __name__ == '__main__':
                     _pflow = output[i].data.cpu().numpy().transpose(1, 2, 0)
                     flow_utils.writeFlow( join(flow_folder, '%06d.flo'%(batch_idx * args.inference_batch_size + i)),  _pflow)
 
-            progress.set_description('Inference Averages for Epoch {}: '.format(epoch) + tools.format_dictionary_of_losses(loss_labels, np.array(statistics).mean(axis=0)))
+            progress.set_description(
+                f'Inference Averages for Epoch {epoch}: {tools.format_dictionary_of_losses(loss_labels, np.array(statistics).mean(axis=0))}'
+            )
             progress.update(1)
 
             if batch_idx == (args.inference_n_batches - 1):

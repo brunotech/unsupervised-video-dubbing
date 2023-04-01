@@ -41,7 +41,7 @@ class BaseModel(torch.nn.Module):
 
     # helper saving function that can be used by subclasses
     def save_network(self, network, network_label, epoch_label, gpu_ids):
-        save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
+        save_filename = f'{epoch_label}_net_{network_label}.pth'
         save_path = os.path.join(self.save_dir, save_filename)
         torch.save(network.cpu().state_dict(), save_path)
         if len(gpu_ids) and torch.cuda.is_available():
@@ -61,13 +61,13 @@ class BaseModel(torch.nn.Module):
 
     # helper loading function that can be used by subclasses
     def load_network(self, network, network_label, epoch_label, save_dir=''):        
-        self.resolve_version()    
-        save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
+        self.resolve_version()
+        save_filename = f'{epoch_label}_net_{network_label}.pth'
         if not save_dir:
             save_dir = self.save_dir
-        save_path = os.path.join(save_dir, save_filename)        
+        save_path = os.path.join(save_dir, save_filename)
         if not os.path.isfile(save_path):
-            print('%s not exists yet!' % save_path)
+            print(f'{save_path} not exists yet!')
             if 'G0' in network_label:
                 raise('Generator must exist!')
         else:
@@ -75,22 +75,23 @@ class BaseModel(torch.nn.Module):
             try:
                 network.load_state_dict(torch.load(save_path))
             except:   
-                pretrained_dict = torch.load(save_path)                
+                pretrained_dict = torch.load(save_path)
                 model_dict = network.state_dict()
 
-                ### printout layers in pretrained model
-                initialized = set()                    
-                for k, v in pretrained_dict.items():                      
-                    initialized.add(k.split('.')[0])                         
+                initialized = {k.split('.')[0] for k, v in pretrained_dict.items()}
                 #print('pretrained model has following layers: ')
                 #print(sorted(initialized))                
 
                 try:
-                    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}                    
+                    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
                     network.load_state_dict(pretrained_dict)
-                    print('Pretrained network %s has excessive layers; Only loading layers that are used' % network_label)
+                    print(
+                        f'Pretrained network {network_label} has excessive layers; Only loading layers that are used'
+                    )
                 except:
-                    print('Pretrained network %s has fewer layers; The following are not initialized:' % network_label)
+                    print(
+                        f'Pretrained network {network_label} has fewer layers; The following are not initialized:'
+                    )
                     if sys.version_info >= (3,0):
                         not_initialized = set()
                     else:
@@ -102,17 +103,17 @@ class BaseModel(torch.nn.Module):
 
                     for k, v in model_dict.items():
                         if k not in pretrained_dict or v.size() != pretrained_dict[k].size():
-                            not_initialized.add(k.split('.')[0])                            
+                            not_initialized.add(k.split('.')[0])
                     print(sorted(not_initialized))
                     network.load_state_dict(model_dict)                  
 
     def concat(self, tensors, dim=0):
         if tensors[0] is not None and tensors[1] is not None:
-            if isinstance(tensors[0], list):                
-                tensors_cat = []
-                for i in range(len(tensors[0])):                    
-                    tensors_cat.append(self.concat([tensors[0][i], tensors[1][i]], dim=dim))                
-                return tensors_cat
+            if isinstance(tensors[0], list):        
+                return [
+                    self.concat([tensors[0][i], tensors[1][i]], dim=dim)
+                    for i in range(len(tensors[0]))
+                ]
             return torch.cat([tensors[0], tensors[1]], dim=dim)
         elif tensors[0] is not None:
             return tensors[0]
@@ -126,8 +127,8 @@ class BaseModel(torch.nn.Module):
         if nearest:
             downsample = torch.nn.AvgPool2d(1, stride=2)
         else:
-            downsample = torch.nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)        
-        for s in range(1, self.n_scales):
+            downsample = torch.nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
+        for _ in range(1, self.n_scales):
             b, t, c, h, w = tensor[-1].size()
             down = downsample(tensor[-1].view(-1, h, w)).view(b, t, c, h//2, w//2)
             tensor.append(down)
@@ -153,7 +154,7 @@ class BaseModel(torch.nn.Module):
         
     def update_learning_rate(self, epoch, model):        
         lr = self.opt.lr * (1 - (epoch - self.opt.niter) / self.opt.niter_decay)
-        for param_group in getattr(self, 'optimizer_' + model).param_groups:
+        for param_group in getattr(self, f'optimizer_{model}').param_groups:
             param_group['lr'] = lr
         print('update learning rate: %f -> %f' % (self.old_lr, lr))
         self.old_lr = lr
@@ -161,7 +162,7 @@ class BaseModel(torch.nn.Module):
     def update_fixed_params(self): # finetune all scales instead of just finest scale
         params = []
         for s in range(self.n_scales):
-            params += list(getattr(self, 'netG'+str(s)).parameters())
+            params += list(getattr(self, f'netG{str(s)}').parameters())
         self.optimizer_G = torch.optim.Adam(params, lr=self.old_lr, betas=(self.opt.beta1, 0.999))
         self.finetune_all = True
         print('------------ Now finetuning all scales -----------')
@@ -187,10 +188,9 @@ class BaseModel(torch.nn.Module):
             return torch.nn.functional.grid_sample(input1, input2, mode='bilinear', padding_mode='border')
 
     def resample(self, image, flow):        
-        b, c, h, w = image.size()        
+        b, c, h, w = image.size()
         if not hasattr(self, 'grid') or self.grid.size() != flow.size():
-            self.grid = get_grid(b, h, w, gpu_id=flow.get_device(), dtype=flow.dtype)            
-        flow = torch.cat([flow[:, 0:1, :, :] / ((w - 1.0) / 2.0), flow[:, 1:2, :, :] / ((h - 1.0) / 2.0)], dim=1)        
+            self.grid = get_grid(b, h, w, gpu_id=flow.get_device(), dtype=flow.dtype)
+        flow = torch.cat([flow[:, 0:1, :, :] / ((w - 1.0) / 2.0), flow[:, 1:2, :, :] / ((h - 1.0) / 2.0)], dim=1)
         final_grid = (self.grid + flow).permute(0, 2, 3, 1).cuda(image.get_device())
-        output = self.grid_sample(image, final_grid)
-        return output
+        return self.grid_sample(image, final_grid)

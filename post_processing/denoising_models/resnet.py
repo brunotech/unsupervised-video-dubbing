@@ -31,14 +31,13 @@ class ResidualSequential(nn.Sequential):
 
 
 def get_block(num_channels, norm_layer, act_fun):
-    layers = [
+    return [
         nn.Conv2d(num_channels, num_channels, 3, 1, 1, bias=False),
         norm_layer(num_channels, affine=True),
         act(act_fun),
         nn.Conv2d(num_channels, num_channels, 3, 1, 1, bias=False),
         norm_layer(num_channels, affine=True),
     ]
-    return layers
 
 
 class ResNet(nn.Module):
@@ -48,11 +47,7 @@ class ResNet(nn.Module):
         '''
         super(ResNet, self).__init__()
 
-        if need_residual:
-            s = ResidualSequential
-        else:
-            s = nn.Sequential
-
+        s = ResidualSequential if need_residual else nn.Sequential
         stride = 1
         # First layers
         layers = [
@@ -62,9 +57,9 @@ class ResNet(nn.Module):
         ]
         # Residual blocks
         # layers_residual = []
-        for i in range(num_blocks):
+        for _ in range(num_blocks):
             layers += [s(*get_block(num_channels, norm_layer, act_fun))]
-       
+
         layers += [
             nn.Conv2d(num_channels, num_channels, 3, 1, 1),
             norm_layer(num_channels, affine=True)

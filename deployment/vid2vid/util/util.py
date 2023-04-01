@@ -24,7 +24,7 @@ def save_all_tensors(opt, real_A, fake_B, fake_B_first, fake_B_raw, real_B, flow
     if opt.use_instance:
         edges = tensor2im(real_A[0, -1, -1:], normalize=False)
         input_image += edges[:,:,np.newaxis]
-    
+
     if opt.add_face_disc:
         ys, ye, xs, xe = modelD.module.get_face_region(real_A[0, -1:])
         if ys is not None:
@@ -40,18 +40,16 @@ def save_all_tensors(opt, real_A, fake_B, fake_B_first, fake_B_raw, real_B, flow
     if flow is not None:
         visual_list += [('flow', tensor2flow(flow)),
                         ('weight', tensor2im(weight, normalize=False))]
-    visuals = OrderedDict(visual_list)
-    return visuals
+    return OrderedDict(visual_list)
 
 # Converts a Tensor into a Numpy array
 # |imtype|: the desired type of the converted numpy array
 def tensor2im(image_tensor, imtype=np.uint8, normalize=True):
     if isinstance(image_tensor, list):
-        image_numpy = []
-        for i in range(len(image_tensor)):
-            image_numpy.append(tensor2im(image_tensor[i], imtype, normalize))
-        return image_numpy
-
+        return [
+            tensor2im(image_tensor[i], imtype, normalize)
+            for i in range(len(image_tensor))
+        ]
     if isinstance(image_tensor, torch.autograd.Variable):
         image_tensor = image_tensor.data
     if len(image_tensor.size()) == 5:
@@ -103,8 +101,7 @@ def tensor2flow(output, imtype=np.uint8):
     mag, ang = cv2.cartToPolar(output[..., 0], output[..., 1])
     hsv[..., 0] = ang * 180 / np.pi / 2
     hsv[..., 2] = cv2.normalize(mag, None, 0, 255, cv2.NORM_MINMAX)
-    rgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
-    return rgb
+    return cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
 
 def add_dummy_to_tensor(tensors, add_size=0):
     if add_size == 0 or tensors is None: return tensors
@@ -203,7 +200,7 @@ class Colorize(object):
         size = gray_image.size()
         color_image = torch.ByteTensor(3, size[1], size[2]).fill_(0)
 
-        for label in range(0, len(self.cmap)):
+        for label in range(len(self.cmap)):
             mask = (label == gray_image[0]).cpu()
             color_image[0][mask] = self.cmap[label][0]
             color_image[1][mask] = self.cmap[label][1]

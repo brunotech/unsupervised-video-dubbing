@@ -22,16 +22,16 @@ def skip(
 
     n_scales = len(num_channels_down) 
 
-    if not (isinstance(upsample_mode, list) or isinstance(upsample_mode, tuple)) :
+    if not (isinstance(upsample_mode, (list, tuple))):
         upsample_mode   = [upsample_mode]*n_scales
 
-    if not (isinstance(downsample_mode, list)or isinstance(downsample_mode, tuple)):
+    if not (isinstance(downsample_mode, (list, tuple))):
         downsample_mode   = [downsample_mode]*n_scales
-    
-    if not (isinstance(filter_size_down, list) or isinstance(filter_size_down, tuple)) :
+
+    if not (isinstance(filter_size_down, (list, tuple))):
         filter_size_down   = [filter_size_down]*n_scales
 
-    if not (isinstance(filter_size_up, list) or isinstance(filter_size_up, tuple)) :
+    if not (isinstance(filter_size_up, (list, tuple))):
         filter_size_up   = [filter_size_up]*n_scales
 
     last_scale = n_scales - 1 
@@ -51,14 +51,14 @@ def skip(
             model_tmp.add(Concat(1, skip, deeper))
         else:
             model_tmp.add(deeper)
-        
+
         model_tmp.add(bn(num_channels_skip[i] + (num_channels_up[i + 1] if i < last_scale else num_channels_down[i])))
 
         if num_channels_skip[i] != 0:
             skip.add(conv(input_depth, num_channels_skip[i], filter_skip_size, bias=need_bias, pad=pad))
             skip.add(bn(num_channels_skip[i]))
             skip.add(act(act_fun))
-            
+
         # skip.add(Concat(2, GenNoise(nums_noise[i]), skip_part))
 
         deeper.add(conv(input_depth, num_channels_down[i], filter_size_down[i], 2, bias=need_bias, pad=pad, downsample_mode=downsample_mode[i]))

@@ -11,8 +11,8 @@ class TestDataset(BaseDataset):
     def initialize(self, opt):
         self.opt = opt
         self.root = opt.dataroot
-        self.dir_A = os.path.join(opt.dataroot, opt.phase + '_A')
-        self.dir_B = os.path.join(opt.dataroot, opt.phase + '_B')
+        self.dir_A = os.path.join(opt.dataroot, f'{opt.phase}_A')
+        self.dir_B = os.path.join(opt.dataroot, f'{opt.phase}_B')
         self.use_real = opt.use_real_img
         self.A_is_label = self.opt.label_nc != 0
 
@@ -20,8 +20,8 @@ class TestDataset(BaseDataset):
         if self.use_real:
             self.B_paths = sorted(make_grouped_dataset(self.dir_B))
             check_path_valid(self.A_paths, self.B_paths)
-        if self.opt.use_instance:                
-            self.dir_inst = os.path.join(opt.dataroot, opt.phase + '_inst')
+        if self.opt.use_instance:            
+            self.dir_inst = os.path.join(opt.dataroot, f'{opt.phase}_inst')
             self.I_paths = sorted(make_grouped_dataset(self.dir_inst))
             check_path_valid(self.A_paths, self.I_paths)
 
@@ -30,13 +30,13 @@ class TestDataset(BaseDataset):
     def __getitem__(self, index):
         self.A, self.B, self.I, seq_idx = self.update_frame_idx(self.A_paths, index)
         tG = self.opt.n_frames_G
-              
-        A_img = Image.open(self.A_paths[seq_idx][0]).convert('RGB')        
+
+        A_img = Image.open(self.A_paths[seq_idx][0]).convert('RGB')
         params = get_img_params(self.opt, A_img.size)
         transform_scaleB = get_transform(self.opt, params)
         transform_scaleA = get_transform(self.opt, params, method=Image.NEAREST, normalize=False) if self.A_is_label else transform_scaleB
         frame_range = list(range(tG)) if self.A is None else [tG-1]
-           
+
         for i in frame_range:                                                   
             A_path = self.A_paths[seq_idx][self.frame_idx + i]            
             Ai = self.get_image(A_path, transform_scaleA, is_label=self.A_is_label)            
@@ -56,9 +56,14 @@ class TestDataset(BaseDataset):
             else:
                 self.I = 0
 
-        self.frame_idx += 1        
-        return_list = {'A': self.A, 'B': self.B, 'inst': self.I, 'A_path': A_path, 'change_seq': self.change_seq}
-        return return_list
+        self.frame_idx += 1
+        return {
+            'A': self.A,
+            'B': self.B,
+            'inst': self.I,
+            'A_path': A_path,
+            'change_seq': self.change_seq,
+        }
 
     def get_image(self, A_path, transform_scaleA, is_label=False):
         A_img = Image.open(A_path)

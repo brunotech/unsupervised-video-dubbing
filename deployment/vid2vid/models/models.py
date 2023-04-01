@@ -12,10 +12,10 @@ def wrap_model(opt, modelG, modelD, flowNet):
         modelG = myModel(opt, modelG)
         modelD = myModel(opt, modelD)
         flowNet = myModel(opt, flowNet)
-    else:             
+    else:         
         if opt.batchSize == 1:
             gpu_split_id = opt.n_gpus_gen + 1
-            modelG = nn.DataParallel(modelG, device_ids=opt.gpu_ids[0:1])                
+            modelG = nn.DataParallel(modelG, device_ids=opt.gpu_ids[:1])
         else:
             gpu_split_id = opt.n_gpus_gen
             modelG = nn.DataParallel(modelG, device_ids=opt.gpu_ids[:gpu_split_id])
@@ -41,9 +41,9 @@ class myModel(nn.Module):
 
     def add_dummy_to_tensor(self, tensors, add_size=0):        
         if add_size == 0 or tensors is None: return tensors
-        if type(tensors) == list or type(tensors) == tuple:
+        if type(tensors) in [list, tuple]:
             return [self.add_dummy_to_tensor(tensor, add_size) for tensor in tensors]    
-                
+
         if isinstance(tensors, torch.Tensor):            
             dummy = torch.zeros_like(tensors)[:add_size]
             tensors = torch.cat([dummy, tensors])
@@ -51,28 +51,27 @@ class myModel(nn.Module):
 
     def remove_dummy_from_tensor(self, tensors, remove_size=0):
         if remove_size == 0 or tensors is None: return tensors
-        if type(tensors) == list or type(tensors) == tuple:
+        if type(tensors) in [list, tuple]:
             return [self.remove_dummy_from_tensor(tensor, remove_size) for tensor in tensors]    
-        
+
         if isinstance(tensors, torch.Tensor):
             tensors = tensors[remove_size:]
         return tensors
 
 def create_model(opt):    
-    print(opt.model)            
-    if opt.model == 'vid2vid':
-        from .vid2vid_model_G import Vid2VidModelG
-        modelG = Vid2VidModelG()    
-        if opt.isTrain:
-            from .vid2vid_model_D import Vid2VidModelD
-            modelD = Vid2VidModelD()    
-    else:
-        raise ValueError("Model [%s] not recognized." % opt.model)
+    print(opt.model)
+    if opt.model != 'vid2vid':
+        raise ValueError(f"Model [{opt.model}] not recognized.")
 
+    from .vid2vid_model_G import Vid2VidModelG
+    modelG = Vid2VidModelG()
+    if opt.isTrain:
+        from .vid2vid_model_D import Vid2VidModelD
+        modelD = Vid2VidModelD()
     if opt.isTrain:
         from .flownet import FlowNet
         flowNet = FlowNet()
-    
+
     modelG.initialize(opt)
     if opt.isTrain:
         modelD.initialize(opt)
@@ -85,20 +84,22 @@ def create_model(opt):
 
 def create_optimizer(opt, models):
     modelG, modelD, flowNet = models
-    optimizer_D_T = []    
-    if opt.fp16:              
+    optimizer_D_T = []
+    if opt.fp16:          
         from apex import amp
-        for s in range(opt.n_scales_temporal):
-            optimizer_D_T.append(getattr(modelD, 'optimizer_D_T'+str(s)))
+        optimizer_D_T.extend(
+            getattr(modelD, f'optimizer_D_T{str(s)}')
+            for s in range(opt.n_scales_temporal)
+        )
         modelG, optimizer_G = amp.initialize(modelG, modelG.optimizer_G, opt_level='O1')
         modelD, optimizers_D = amp.initialize(modelD, [modelD.optimizer_D] + optimizer_D_T, opt_level='O1')
-        optimizer_D, optimizer_D_T = optimizers_D[0], optimizers_D[1:]        
+        optimizer_D, optimizer_D_T = optimizers_D[0], optimizers_D[1:]
         modelG, modelD, flownet = wrap_model(opt, modelG, modelD, flowNet)
-    else:        
+    else:    
         optimizer_G = modelG.module.optimizer_G
-        optimizer_D = modelD.module.optimizer_D        
+        optimizer_D = modelD.module.optimizer_D
         for s in range(opt.n_scales_temporal):
-            optimizer_D_T.append(getattr(modelD.module, 'optimizer_D_T'+str(s)))
+            optimizer_D_T.append(getattr(modelD.module, f'optimizer_D_T{str(s)}'))
     return modelG, modelD, flowNet, optimizer_G, optimizer_D, optimizer_D_T
 
 def init_params(opt, modelG, modelD, data_loader):
@@ -139,14 +140,13 @@ def save_models(opt, epoch, epoch_iter, total_steps, visualizer, iter_path, mode
             modelG.module.save('latest')
             modelD.module.save('latest')
             np.savetxt(iter_path, (epoch, epoch_iter), delimiter=',', fmt='%d')
-    else:
-        if epoch % opt.save_epoch_freq == 0:
-            visualizer.vis_print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
-            modelG.module.save('latest')
-            modelD.module.save('latest')
-            modelG.module.save(epoch)
-            modelD.module.save(epoch)
-            np.savetxt(iter_path, (epoch+1, 0), delimiter=',', fmt='%d')
+    elif epoch % opt.save_epoch_freq == 0:
+        visualizer.vis_print('saving the model at the end of epoch %d, iters %d' % (epoch, total_steps))        
+        modelG.module.save('latest')
+        modelD.module.save('latest')
+        modelG.module.save(epoch)
+        modelD.module.save(epoch)
+        np.savetxt(iter_path, (epoch+1, 0), delimiter=',', fmt='%d')
 
 def update_models(opt, epoch, modelG, modelD, data_loader):
     ### linearly decay learning rate after certain iterations

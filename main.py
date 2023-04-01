@@ -1,5 +1,5 @@
 import os
-import cv2 
+import cv2
 import torch
 import argparse
 import glob
@@ -34,7 +34,7 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 device = torch.device("cuda" if args.cuda else "cpu")
 kwargs = {'num_workers': 4, 'pin_memory': True} if args.cuda else {}
 
-print('Run on {}'.format(device))
+print(f'Run on {device}')
 
 
 face_encoder = FaceEncoder().to(device)
@@ -54,7 +54,9 @@ train_loader = dset_loaders['train']
 val_loader = dset_loaders['val']
 test_loader = dset_loaders['test']
 dset_sizes = {x: len(dsets[x]) for x in ['train', 'val', 'test']}
-print('\nStatistics: train: {}, val: {}, test: {}'.format(dset_sizes['train'], dset_sizes['val'], dset_sizes['test']))
+print(
+    f"\nStatistics: train: {dset_sizes['train']}, val: {dset_sizes['val']}, test: {dset_sizes['test']}"
+)
 
 def open_level(mouth_keypoints):
     u_index = [1, 2, 3, 4, 5, 13, 14, 15]
@@ -191,10 +193,9 @@ def test(epoch):
     test_loader.dataset.test_case = True
 
     with torch.no_grad():
-        for batch_idx, ((keypoints, mfcc), _) in enumerate(test_loader):
-
+        for (keypoints, mfcc), _ in test_loader:
             batch_size = keypoints.shape[0]
-            
+
             keypoints = keypoints.to(device)
             mfcc = mfcc.transpose(1,2).to(device).reshape(-1, 12)
 
@@ -210,7 +211,6 @@ def test(epoch):
 
             test_loss += mse_loss(mouth_points, mouth_points_pred)
 
-            # if epoch % 10 == 0:
     n = min(keypoints.size(0), 8)
     image_data = image_from_tensor(keypoints[:,0,:,:])
     face_pred = torch.cat((face_points.view(batch_size, 29, 48, 2),
@@ -219,21 +219,25 @@ def test(epoch):
     comparison = torch.cat([image_data[:n], face_pred_batch[:n]], dim = 0)
 
     if not os.path.exists('./wav_results_base'): os.mkdir('./wav_results_base')
-    save_image(comparison.cpu(), './wav_results_base/reconstruction_' + str(epoch) + '_' + str(round(test_loss.item(),6)) + '.png', nrow=n)
+    save_image(
+        comparison.cpu(),
+        f'./wav_results_base/reconstruction_{str(epoch)}_{str(round(test_loss.item(), 6))}.png',
+        nrow=n,
+    )
 
     if not os.path.exists('./wav_saves_base'): os.mkdir('./wav_saves_base')
-    torch.save(face_encoder, './wav_saves_base/face_encoder_{}.pt'.format(epoch))
-    torch.save(audio_encoder, './wav_saves_base/audio_encoder_{}.pt'.format(epoch))
-    torch.save(face_decoder, './wav_saves_base/face_decoder_{}.pt'.format(epoch))
+    torch.save(face_encoder, f'./wav_saves_base/face_encoder_{epoch}.pt')
+    torch.save(audio_encoder, f'./wav_saves_base/audio_encoder_{epoch}.pt')
+    torch.save(face_decoder, f'./wav_saves_base/face_decoder_{epoch}.pt')
 
     test_loss /= len(test_loader.dataset)
     print('====> Test set loss: {:.4f}'.format(test_loss))
 
 if __name__ == "__main__":
-    for epoch in range(0, args.epochs):
-        print('Epoch {} starts at {}'.format(epoch, datetime.datetime.now()))
+    for epoch in range(args.epochs):
+        print(f'Epoch {epoch} starts at {datetime.datetime.now()}')
         train(epoch)
         test(epoch)
-        print('Epoch {} ends at {}'.format(epoch, datetime.datetime.now()))
+        print(f'Epoch {epoch} ends at {datetime.datetime.now()}')
 
 

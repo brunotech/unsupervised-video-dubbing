@@ -28,7 +28,7 @@ def load_LR_HR_imgs_sr(fname, imsize, factor, enforse_div32=None):
 
     if imsize != -1:
         img_orig_pil, img_orig_np = get_image(fname, imsize)
-        
+
     # For comparison with GT
     if enforse_div32 == 'CROP':
         new_size = (img_orig_pil.size[0] - img_orig_pil.size[0] % 32, 
@@ -45,7 +45,7 @@ def load_LR_HR_imgs_sr(fname, imsize, factor, enforse_div32=None):
         img_HR_np = pil_to_np(img_HR_pil)
     else:
         img_HR_pil, img_HR_np = img_orig_pil, img_orig_np
-        
+
     LR_size = [
                img_HR_pil.size[0] // factor, 
                img_HR_pil.size[1] // factor
@@ -54,7 +54,7 @@ def load_LR_HR_imgs_sr(fname, imsize, factor, enforse_div32=None):
     img_LR_pil = img_HR_pil.resize(LR_size, Image.ANTIALIAS)
     img_LR_np = pil_to_np(img_LR_pil)
 
-    print('HR and LR resolutions: %s, %s' % (str(img_HR_pil.size), str (img_LR_pil.size)))
+    print(f'HR and LR resolutions: {str(img_HR_pil.size)}, {str(img_LR_pil.size)}')
 
     return {
                 'orig_pil': img_orig_pil,

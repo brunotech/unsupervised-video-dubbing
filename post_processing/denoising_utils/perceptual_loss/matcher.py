@@ -12,8 +12,6 @@ class Matcher:
             self.get_statistics = all_features[how]
         else:
             assert False
-        pass
-
         if loss in all_losses.keys():
             self.loss = all_losses[loss]
         else:
@@ -61,8 +59,7 @@ def gram_matrix(x):
     (b, ch, h, w) = x.size()
     features = x.view(b, ch, w * h)
     features_t = features.transpose(1, 2)
-    gram = features.bmm(features_t) / (ch * h * w)
-    return gram
+    return features.bmm(features_t) / (ch * h * w)
 
 
 def features(x):

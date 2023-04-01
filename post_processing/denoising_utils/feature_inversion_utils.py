@@ -44,7 +44,7 @@ def get_vanilla_vgg_features(cut_idx=-1):
 
 
 def get_matcher(net, opt):
-    idxs = [x for x in opt['layers'].split(',')]
+    idxs = list(opt['layers'].split(','))
     matcher = Matcher(opt['what'])
 
     def hook(module, input, output):
@@ -69,10 +69,11 @@ def get_vgg(cut_idx=-1):
     return f
 
 def vgg_preprocess_var(var):
-        (r, g, b) = torch.chunk(var, 3, dim=1)
-        bgr = torch.cat((b, g, r), 1)
-        out = bgr * 255 - torch.autograd.Variable(vgg_mean[None, ...]).type(var.type()).expand_as(bgr)
-        return out
+    (r, g, b) = torch.chunk(var, 3, dim=1)
+    bgr = torch.cat((b, g, r), 1)
+    return bgr * 255 - torch.autograd.Variable(vgg_mean[None, ...]).type(
+        var.type()
+    ).expand_as(bgr)
 
 vgg_mean = torch.FloatTensor([103.939, 116.779, 123.680]).view(3, 1, 1)
 

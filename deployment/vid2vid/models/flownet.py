@@ -23,14 +23,14 @@ class FlowNet(BaseModel):
         self.downsample = torch.nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
 
     def forward(self, input_A, input_B, dummy_bs=0):        
-        with torch.no_grad():            
+        with torch.no_grad():        
             if input_A.get_device() == self.gpu_ids[0]:
                 input_A, input_B = input_A[dummy_bs:], input_B[dummy_bs:]
                 if input_A.size(0) == 0:
                     b, n, c, h, w = input_A.size()
                     return self.Tensor(1, n, 2, h, w), self.Tensor(1, n, 1, h, w)
             size = input_A.size()
-            assert(len(size) == 4 or len(size) == 5)
+            assert len(size) in {4, 5}
             if len(size) == 5:
                 b, n, c, h, w = size
                 input_A = input_A.contiguous().view(-1, c, h, w)

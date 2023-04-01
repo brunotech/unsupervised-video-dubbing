@@ -13,9 +13,9 @@ class PoseDataset(BaseDataset):
         self.opt = opt
         self.root = opt.dataroot 
 
-        self.dir_dp = os.path.join(opt.dataroot, opt.phase + '_densepose')
-        self.dir_op = os.path.join(opt.dataroot, opt.phase + '_openpose')
-        self.dir_img = os.path.join(opt.dataroot, opt.phase + '_img')                
+        self.dir_dp = os.path.join(opt.dataroot, f'{opt.phase}_densepose')
+        self.dir_op = os.path.join(opt.dataroot, f'{opt.phase}_openpose')
+        self.dir_img = os.path.join(opt.dataroot, f'{opt.phase}_img')
         self.img_paths = sorted(make_grouped_dataset(self.dir_img))
         if not opt.openpose_only:
             self.dp_paths = sorted(make_grouped_dataset(self.dir_dp))
@@ -28,10 +28,10 @@ class PoseDataset(BaseDataset):
 
     def __getitem__(self, index):
         A, B, _, seq_idx = self.update_frame_idx(self.img_paths, index)
-        img_paths = self.img_paths[seq_idx]        
+        img_paths = self.img_paths[seq_idx]
         n_frames_total, start_idx, t_step = get_video_params(self.opt, self.n_frames_total, len(img_paths), self.frame_idx)
-        
-        img = Image.open(img_paths[start_idx]).convert('RGB')     
+
+        img = Image.open(img_paths[start_idx]).convert('RGB')
         size = img.size
         params = get_img_params(self.opt, size)
 
@@ -53,18 +53,22 @@ class PoseDataset(BaseDataset):
             else:
                 Ai = torch.cat([Di, Oi])
             Bi = self.get_image(img_path, size, params, input_type='img')
-            
+
             Ai, Bi = self.crop(Ai), self.crop(Bi) # only crop the central half region to save time
             A = concat_frame(A, Ai, n_frames_total)
             B = concat_frame(B, Bi, n_frames_total)
-        
+
         if not self.opt.isTrain:
             self.A, self.B = A, B
-            self.frame_idx += 1            
+            self.frame_idx += 1
         change_seq = False if self.opt.isTrain else self.change_seq
-        return_list = {'A': A, 'B': B, 'inst': 0, 'A_path': img_path, 'change_seq': change_seq}
-
-        return return_list
+        return {
+            'A': A,
+            'B': B,
+            'inst': 0,
+            'A_path': img_path,
+            'change_seq': change_seq,
+        }
 
     def get_image(self, A_path, size, params, input_type):
         if input_type != 'openpose':
@@ -87,8 +91,7 @@ class PoseDataset(BaseDataset):
         is_img = input_type == 'img'
         method = Image.BICUBIC if is_img else Image.NEAREST
         transform_scaleA = get_transform(self.opt, params, method=method)
-        A_scaled = transform_scaleA(A_img)
-        return A_scaled
+        return transform_scaleA(A_img)
 
     def crop(self, Ai):
         w = Ai.size()[2]

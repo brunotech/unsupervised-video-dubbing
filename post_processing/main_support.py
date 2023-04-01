@@ -35,19 +35,12 @@ def step_1_main(base_video_file, audio_driver_file, epoch):
 
     np.save('./result/keypoints', keypoints.cpu().detach().numpy())
 
-    # extract frames from base video
-    # extract_frames(base_video_file)
-    #keypoints_model(np.zeros((29, 12)), np.zeros((29, 48, 2)))
-    #print(a.shape)
-    pass
-
 
 def generate_video(base_video, driver_video):
     generated_keypoints = generate_keypoints(base_video, driver_video, epoch)
     generated_frames = vid2vid(base_video, generate_keypoints) # First frame of base_video actually
     replaced_frames = replace_mouth(base_video, generated_frames)
-    final_video = align_audio(replaced_frames, base_video)
-    return final_video
+    return align_audio(replaced_frames, base_video)
 
 ######################################################
 ## Generate Keypoints from base video and driver audio
@@ -81,51 +74,50 @@ def extract_facial_keypoints(base_video):
     count = 0
     while vidcap.isOpened():
         success, frame = vidcap.read()
-        if success:
-            filename = 'frame_{:05d}.png'.format(count)
-            cv2.imwrite('./result/base_frames/frame_{:05d}.png'.format(count), frame)
-            keypoints = detect_keypoints(frame, filename)
-
-            ######################################################
-            # remember to minus 1 for indexing
-
-            # up = min(20,25) --- y [1]
-            # down = 9 --- y [1]
-            # left = min(1,2,3) --- x [0]
-            # right = max(15,16,17) --- x[0]
-            offset_ratio = 0.25
-
-            up = min(keypoints[20-1][1], keypoints[25-1][1])
-            down = keypoints[9][1]
-            left = min(keypoints[1-1][0], keypoints[2-1][0], keypoints[3-1][0])
-            right = max(keypoints[15-1][0], keypoints[16-1][0], keypoints[17-1][0])
-
-            up_offset = int(up - up * offset_ratio)
-            down_offset = int(down + down * offset_ratio)
-            left_offset = int(left - left * offset_ratio)
-            right_offset = int(right + right * offset_ratio)
-
-            center = [*map(int,(0.5 * (right_offset - left_offset) + left_offset, 0.5 * (down_offset - up_offset) + up_offset))]
-            crop_length = int(max(down_offset - up_offset, right_offset-left_offset) / 2)
-            
-            up_crop = y_offset = center[1] - crop_length
-            down_crop = center[1] + crop_length
-            left_crop = x_offset = center[0] - crop_length
-            right_crop = center[0] + crop_length
-
-            scale_ratio = crop_length * 2 / 256
-            frame_to_model = (keypoints - np.array([x_offset, y_offset])) / scale_ratio
-
-            # TODO
-            # Save x_offset, y_offset, scale_ratio
-            saved_offset_scale[count] = ([x_offset, y_offset],scale_ratio)
-            ######################################################
-            base_video_keypoints.append(frame_to_model)
-
-            print('Frame {} processed'.format(count))
-            count += 1
-        else:
+        if not success:
             break
+        filename = 'frame_{:05d}.png'.format(count)
+        cv2.imwrite('./result/base_frames/frame_{:05d}.png'.format(count), frame)
+        keypoints = detect_keypoints(frame, filename)
+
+        ######################################################
+        # remember to minus 1 for indexing
+
+        # up = min(20,25) --- y [1]
+        # down = 9 --- y [1]
+        # left = min(1,2,3) --- x [0]
+        # right = max(15,16,17) --- x[0]
+        offset_ratio = 0.25
+
+        up = min(keypoints[20-1][1], keypoints[25-1][1])
+        down = keypoints[9][1]
+        left = min(keypoints[0][0], keypoints[2-1][0], keypoints[3-1][0])
+        right = max(keypoints[15-1][0], keypoints[16-1][0], keypoints[17-1][0])
+
+        up_offset = int(up - up * offset_ratio)
+        down_offset = int(down + down * offset_ratio)
+        left_offset = int(left - left * offset_ratio)
+        right_offset = int(right + right * offset_ratio)
+
+        center = [*map(int,(0.5 * (right_offset - left_offset) + left_offset, 0.5 * (down_offset - up_offset) + up_offset))]
+        crop_length = int(max(down_offset - up_offset, right_offset-left_offset) / 2)
+
+        up_crop = y_offset = center[1] - crop_length
+        down_crop = center[1] + crop_length
+        left_crop = x_offset = center[0] - crop_length
+        right_crop = center[0] + crop_length
+
+        scale_ratio = crop_length * 2 / 256
+        frame_to_model = (keypoints - np.array([x_offset, y_offset])) / scale_ratio
+
+        # TODO
+        # Save x_offset, y_offset, scale_ratio
+        saved_offset_scale[count] = ([x_offset, y_offset],scale_ratio)
+        ######################################################
+        base_video_keypoints.append(frame_to_model)
+
+        print(f'Frame {count} processed')
+        count += 1
     vidcap.release()
     print('Keypoints detection completed')
     base_video_facial_keypoints = np.array(base_video_keypoints)[:, :48, :]
@@ -168,50 +160,55 @@ def detect_keypoints(frame, filename):
     dets = detector(frame, 1)
     keypoints = []
     if len(dets) == 1:
-        for k, d in enumerate(dets):
+        for d in dets:
             shape = predictor(frame, d)
-            face = range(0, 68)
+            face = range(68)
             for i in face:
                 x = shape.part(i).x
                 y = shape.part(i).y
                 keypoints.append([x, y])
-        return np.array(keypoints)
     else:
         print('-'*30)
-        print("Exception: Number of faces detected for {}: {}".format(filename, len(dets)))
-        print("Input an integer to choose one face (START from 0): {}".format(dets))
+        print(f"Exception: Number of faces detected for {filename}: {len(dets)}")
+        print(f"Input an integer to choose one face (START from 0): {dets}")
         # chosen_face = int(input())
         chosen_face = 0
         print('-'*30)
         for k, d in enumerate(dets):
             if k == chosen_face:
                 shape = predictor(frame, d)
-                face = range(0, 68)
+                face = range(68)
                 for i in face:
                     x = shape.part(i).x
                     y = shape.part(i).y
                     keypoints.append([x, y])
-        return np.array(keypoints)
+
+    return np.array(keypoints)
 
     
 # Encoder-Decoder to generate mouth keypoints
 def keypoints_model(driver_audio_feature, base_video_facial_keypoints, epoch):
     
-    face_encoder = torch.load('./source/model/face_encoder_{}.pt'.format(str(epoch)), map_location=torch.device('cpu')).eval()
-    audio_encoder = torch.load('./source/model/audio_encoder_{}.pt'.format(str(epoch)), map_location=torch.device('cpu')).eval()
-    face_decoder = torch.load('./source/model/face_decoder_{}.pt'.format(str(epoch)), map_location=torch.device('cpu')).eval()
+    face_encoder = torch.load(
+        f'./source/model/face_encoder_{str(epoch)}.pt',
+        map_location=torch.device('cpu'),
+    ).eval()
+    audio_encoder = torch.load(
+        f'./source/model/audio_encoder_{str(epoch)}.pt',
+        map_location=torch.device('cpu'),
+    ).eval()
+    face_decoder = torch.load(
+        f'./source/model/face_decoder_{str(epoch)}.pt',
+        map_location=torch.device('cpu'),
+    ).eval()
     face_embedding = face_encoder(torch.FloatTensor(base_video_facial_keypoints).reshape(-1, 96))
     audio_embedding = audio_encoder(torch.FloatTensor(driver_audio_feature))
     embedding = torch.cat((face_embedding, audio_embedding), dim = 1).view(1, -1, 144)
-    target_mouth_keypoints = (face_decoder(embedding) * 255).reshape(-1, 20, 2).squeeze(0)
-    # [86, 20, 2]
-    # base_video_facial_keypoints: (86, 48, 2)
-    return target_mouth_keypoints
+    return (face_decoder(embedding) * 255).reshape(-1, 20, 2).squeeze(0)
 
 def combine_keypoints(base_video_facial_keypoints, target_mouth_keypoints):
     facial_kp_tensor = torch.FloatTensor(base_video_facial_keypoints)
-    generated_keypoints = torch.cat((facial_kp_tensor, target_mouth_keypoints), dim = 1)
-    return generated_keypoints
+    return torch.cat((facial_kp_tensor, target_mouth_keypoints), dim = 1)
 
 
 # #############################################################

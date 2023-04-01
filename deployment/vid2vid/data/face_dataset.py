@@ -13,12 +13,12 @@ from data.keypoint2img import interpPoints, drawEdge
 class FaceDataset(BaseDataset):
     def initialize(self, opt):
         self.opt = opt
-        self.root = opt.dataroot                
-        self.dir_A = os.path.join(opt.dataroot, opt.phase + '_keypoints')
-        self.dir_B = os.path.join(opt.dataroot, opt.phase + '_img')
-        
+        self.root = opt.dataroot
+        self.dir_A = os.path.join(opt.dataroot, f'{opt.phase}_keypoints')
+        self.dir_B = os.path.join(opt.dataroot, f'{opt.phase}_img')
+
         self.A_paths = sorted(make_grouped_dataset(self.dir_A))
-        self.B_paths = sorted(make_grouped_dataset(self.dir_B))    
+        self.B_paths = sorted(make_grouped_dataset(self.dir_B))
         check_path_valid(self.A_paths, self.B_paths)
 
         self.init_frame_idx(self.A_paths)
@@ -27,24 +27,23 @@ class FaceDataset(BaseDataset):
         self.scale_shift = np.zeros((6, 2)) #np.random.uniform(-5, 5, size=[6, 2])
 
     def __getitem__(self, index):
-        A, B, I, seq_idx = self.update_frame_idx(self.A_paths, index)        
+        A, B, I, seq_idx = self.update_frame_idx(self.A_paths, index)
         A_paths = self.A_paths[seq_idx]
         B_paths = self.B_paths[seq_idx]
         n_frames_total, start_idx, t_step = get_video_params(self.opt, self.n_frames_total, len(A_paths), self.frame_idx)
-        
+
         B_img = Image.open(B_paths[start_idx]).convert('RGB')
         B_size = B_img.size
         points = np.loadtxt(A_paths[start_idx], delimiter=',')
-        is_first_frame = self.opt.isTrain or not hasattr(self, 'min_x')
-        if is_first_frame: # crop only the face region
+        if is_first_frame := self.opt.isTrain or not hasattr(self, 'min_x'):
             self.get_crop_coords(points, B_size)
-        params = get_img_params(self.opt, self.crop(B_img).size)        
+        params = get_img_params(self.opt, self.crop(B_img).size)
         transform_scaleA = get_transform(self.opt, params, method=Image.BILINEAR, normalize=False)
         transform_label = get_transform(self.opt, params, method=Image.NEAREST, normalize=False)
         transform_scaleB = get_transform(self.opt, params)
-        
+
         # read in images        
-        frame_range = list(range(n_frames_total)) if self.A is None else [self.opt.n_frames_G-1]        
+        frame_range = list(range(n_frames_total)) if self.A is None else [self.opt.n_frames_G-1]
         for i in frame_range:
             A_path = A_paths[start_idx + i * t_step]
             B_path = B_paths[start_idx + i * t_step]                    
@@ -54,19 +53,16 @@ class FaceDataset(BaseDataset):
             A = concat_frame(A, Ai, n_frames_total)
             B = concat_frame(B, Bi, n_frames_total)
             I = concat_frame(I, Li, n_frames_total)
-        
+
         if not self.opt.isTrain:
             self.A, self.B, self.I = A, B, I
             self.frame_idx += 1
         change_seq = False if self.opt.isTrain else self.change_seq
-        return_list = {'A': A, 'B': B, 'inst': I, 'A_path': A_path, 'change_seq': change_seq}
-                
-        return return_list
+        return {'A': A, 'B': B, 'inst': I, 'A_path': A_path, 'change_seq': change_seq}
 
     def get_image(self, A_path, transform_scaleA):
-        A_img = Image.open(A_path)                
-        A_scaled = transform_scaleA(self.crop(A_img))
-        return A_scaled
+        A_img = Image.open(A_path)
+        return transform_scaleA(self.crop(A_img))
 
     def get_face_image(self, A_path, transform_A, transform_L, size, img):
         # read face keypoints from path and crop face region
@@ -89,19 +85,20 @@ class FaceDataset(BaseDataset):
         return input_tensor, label_tensor
 
     def read_keypoints(self, A_path, size):        
-        # mapping from keypoints to face part 
-        part_list = [[list(range(0, 17)) + list(range(68, 83)) + [0]], # face
-                     [range(17, 22)],                                  # right eyebrow
-                     [range(22, 27)],                                  # left eyebrow
-                     [[28, 31], range(31, 36), [35, 28]],              # nose
-                     [[36,37,38,39], [39,40,41,36]],                   # right eye
-                     [[42,43,44,45], [45,46,47,42]],                   # left eye
-                     [range(48, 55), [54,55,56,57,58,59,48]],          # mouth
-                     [range(60, 65), [64,65,66,67,60]]                 # tongue
-                    ]
+        # mapping from keypoints to face part
+        part_list = [
+            [list(range(17)) + list(range(68, 83)) + [0]],
+            [range(17, 22)],
+            [range(22, 27)],
+            [[28, 31], range(31, 36), [35, 28]],
+            [[36, 37, 38, 39], [39, 40, 41, 36]],
+            [[42, 43, 44, 45], [45, 46, 47, 42]],
+            [range(48, 55), [54, 55, 56, 57, 58, 59, 48]],
+            [range(60, 65), [64, 65, 66, 67, 60]],
+        ]
         label_list = [1, 2, 2, 3, 4, 4, 5, 6] # labeling for different facial parts        
         keypoints = np.loadtxt(A_path, delimiter=',')
-        
+
         # add upper half face by symmetry
         pts = keypoints[:17, :].astype(np.int32)
         baseline_y = (pts[0,1] + pts[-1,1]) / 2
@@ -175,9 +172,9 @@ class FaceDataset(BaseDataset):
             return img.crop((self.min_x, self.min_y, self.max_x, self.max_y))
 
     def scale_points(self, keypoints, part, index, sym=False):
+        pts_idx = sum((list(idx) for idx in part), [])
+        pts = keypoints[pts_idx]
         if sym:
-            pts_idx = sum([list(idx) for idx in part], [])
-            pts = keypoints[pts_idx]
             ratio_x = self.scale_ratio_sym[index, 0]
             ratio_y = self.scale_ratio_sym[index, 1]
             mean = np.mean(pts, axis=0)
@@ -192,22 +189,17 @@ class FaceDataset(BaseDataset):
                 pts_i[:,1] = (pts_i[:,1] - mean_iy) + new_mean_iy
                 keypoints[idx] = pts_i
 
-        else:            
-            pts_idx = sum([list(idx) for idx in part], [])
-            pts = keypoints[pts_idx]
+        else:        
             ratio_x = self.scale_ratio[index, 0]
             ratio_y = self.scale_ratio[index, 1]
             mean = np.mean(pts, axis=0)
-            mean_x, mean_y = mean[0], mean[1]            
+            mean_x, mean_y = mean[0], mean[1]
             pts[:,0] = (pts[:,0] - mean_x) * ratio_x + mean_x + self.scale_shift[index, 0]
             pts[:,1] = (pts[:,1] - mean_y) * ratio_y + mean_y + self.scale_shift[index, 1]
             keypoints[pts_idx] = pts
 
     def __len__(self):
-        if self.opt.isTrain:
-            return len(self.A_paths)
-        else:
-            return sum(self.frames_count)
+        return len(self.A_paths) if self.opt.isTrain else sum(self.frames_count)
 
     def name(self):
         return 'FaceDataset'

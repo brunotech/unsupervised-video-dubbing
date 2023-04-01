@@ -44,28 +44,19 @@ if int_step == 1:
     epoch = input('===> ')
 
     step_1_main(base_video_file, audio_driver_file, epoch)
-    f = open("./result/source.txt","w+")
-    f.write('Base Video: {}'.format(base_video_file + '\n\n'))
-    f.write('Audio Driver: {}'.format(audio_driver_file+ '\n\n'))
-    f.write('Epoch: {}'.format(epoch))
-    f.close()
+    with open("./result/source.txt","w+") as f:
+        f.write('Base Video: {}'.format(base_video_file + '\n\n'))
+        f.write('Audio Driver: {}'.format(audio_driver_file+ '\n\n'))
+        f.write(f'Epoch: {epoch}')
     print('Step 1 Done!')
 
-# ########################################
-# Step 2: Test generated images
-# ########################################
-
-if int_step == 2:
+elif int_step == 2:
     print('Step 2: Test Image!')
     step2_load_keypoint = np.load('./result/keypoints_for_vis.npy')
     step_2_main(step2_load_keypoint)
     print('Step 2 Done!')
 
-# ########################################
-# Step 3: Exectute Vid2Vid
-# ########################################
-
-if int_step == 3:
+elif int_step == 3:
     print('Step 3: Executing Vid2Vid')
 
     cmd_denoise = 'bash step_3_vid2vid.sh'
@@ -75,14 +66,10 @@ if int_step == 3:
 
     if not os.path.exists('./result/vid2vid_frames'):
         os.mkdir('./result/vid2vid_frames')
-    
+
     print('Please copy back generated images to /result/vid2vid_frames/')
 
-# ########################################
-# Step 4: Smooth generated images
-# ########################################
-
-if int_step == 4:
+elif int_step == 4:
     print('Step 4: Smoothing vid2vid output')
 
     print("Please input Vid2Vid image folder path ! If default, enter 'd'!")
@@ -100,18 +87,14 @@ if int_step == 4:
     step_4_main(vid2vid_path, base_path, shell_default)
 
 
-# ########################################
-# Step 5: Concat modified images and audio
-# ########################################
-
-if int_step == 5:
+elif int_step == 5:
     print('Step 5: Generate output!')
 
     print("Please input smoothed image folder path! If default, enter 'd'!")
     image_path = input('===> ')
     if image_path == 'd':
         image_path = './result/smoothed_frames/'
-    
+
     assert os.path.exists(image_path)
     assert image_path.endswith('/')
 
@@ -122,7 +105,7 @@ if int_step == 5:
 
     # fps = 25.92002592002592
     fps = 28.76
-    
+
     step_5_main(shell_default, image_path, audio_driver_path, fps)
 
     print('Step 5 Done!')

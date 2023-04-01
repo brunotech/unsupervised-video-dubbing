@@ -5,7 +5,6 @@ class BaseDataLoader():
     
     def initialize(self, opt):
         self.opt = opt
-        pass
 
     def load_data():
         return None

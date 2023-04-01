@@ -27,7 +27,7 @@ class Visualizer():
         if self.use_html:
             self.web_dir = os.path.join(opt.checkpoints_dir, opt.name, 'web')
             self.img_dir = os.path.join(self.web_dir, 'images')
-            print('create web directory %s...' % self.web_dir)
+            print(f'create web directory {self.web_dir}...')
             util.mkdirs([self.web_dir, self.img_dir])
         self.log_name = os.path.join(opt.checkpoints_dir, opt.name, 'loss_log.txt')
         with open(self.log_name, "a") as log_file:
@@ -65,7 +65,7 @@ class Visualizer():
                     util.save_image(image_numpy, img_path)
 
             # update website
-            webpage = html.HTML(self.web_dir, 'Experiment name = %s' % self.name, reflesh=1)
+            webpage = html.HTML(self.web_dir, f'Experiment name = {self.name}', reflesh=1)
             for n in range(epoch, 0, -1):
                 webpage.add_header('epoch [%d]' % n)
                 ims = []
@@ -124,7 +124,7 @@ class Visualizer():
 
         for label, image_numpy in visuals.items():
             save_ext = 'png' if 'real_A' in label and self.opt.label_nc != 0 else 'jpg'
-            image_name = '%s_%s.%s' % (label, name, save_ext)
+            image_name = f'{label}_{name}.{save_ext}'
             save_path = os.path.join(image_dir, image_name)
             util.save_image(image_numpy, save_path)
 

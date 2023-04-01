@@ -25,16 +25,16 @@ class BaseDataset(data.Dataset):
 
     def init_frame_idx(self, A_paths):
         self.n_of_seqs = min(len(A_paths), self.opt.max_dataset_size)         # number of sequences to train
-        self.seq_len_max = max([len(A) for A in A_paths])                     # max number of frames in the training sequences
+        self.seq_len_max = max(len(A) for A in A_paths)
 
         self.seq_idx = 0                                                      # index for current sequence
-        self.frame_idx = self.opt.start_frame if not self.opt.isTrain else 0  # index for current frame in the sequence
+        self.frame_idx = 0 if self.opt.isTrain else self.opt.start_frame
         self.frames_count = []                                                # number of frames in each sequence
-        for path in A_paths:
-            self.frames_count.append(len(path) - self.opt.n_frames_G + 1)
-
+        self.frames_count.extend(
+            len(path) - self.opt.n_frames_G + 1 for path in A_paths
+        )
         self.folder_prob = [count / sum(self.frames_count) for count in self.frames_count]
-        self.n_frames_total = self.opt.n_frames_total if self.opt.isTrain else 1 
+        self.n_frames_total = self.opt.n_frames_total if self.opt.isTrain else 1
         self.A, self.B, self.I = None, None, None
 
     def update_frame_idx(self, A_paths, index):
@@ -84,7 +84,7 @@ def make_power_2(n, base=32.0):
 
 def get_img_params(opt, size):
     w, h = size
-    new_h, new_w = h, w        
+    new_h, new_w = h, w
     if 'resize' in opt.resize_or_crop:   # resize image to be loadSize x loadSize
         new_h = new_w = opt.loadSize            
     elif 'scaleWidth' in opt.resize_or_crop: # scale image width to be loadSize
@@ -107,20 +107,19 @@ def get_img_params(opt, size):
     if 'crop' in opt.resize_or_crop or 'scaledCrop' in opt.resize_or_crop:
         if 'crop' in opt.resize_or_crop:      # crop patches of size fineSize x fineSize
             crop_w = crop_h = opt.fineSize
-        else:
-            if 'Width' in opt.resize_or_crop: # crop patches of width fineSize
-                crop_w = opt.fineSize
-                crop_h = opt.fineSize * h // w
-            else:                              # crop patches of height fineSize
-                crop_h = opt.fineSize
-                crop_w = opt.fineSize * w // h
+        elif 'Width' in opt.resize_or_crop: # crop patches of width fineSize
+            crop_w = opt.fineSize
+            crop_h = opt.fineSize * h // w
+        else:                              # crop patches of height fineSize
+            crop_h = opt.fineSize
+            crop_w = opt.fineSize * w // h
 
-        crop_w, crop_h = make_power_2(crop_w), make_power_2(crop_h)        
+        crop_w, crop_h = make_power_2(crop_w), make_power_2(crop_h)
         x_span = (new_w - crop_w) // 2
-        crop_x = np.maximum(0, np.minimum(x_span*2, int(np.random.randn() * x_span/3 + x_span)))        
+        crop_x = np.maximum(0, np.minimum(x_span*2, int(np.random.randn() * x_span/3 + x_span)))
         crop_y = random.randint(0, np.minimum(np.maximum(0, new_h - crop_h), new_h // 8))
-        #crop_x = random.randint(0, np.maximum(0, new_w - crop_w))
-        #crop_y = random.randint(0, np.maximum(0, new_h - crop_h))        
+            #crop_x = random.randint(0, np.maximum(0, new_w - crop_w))
+            #crop_y = random.randint(0, np.maximum(0, new_h - crop_h))        
     else:
         new_w, new_h = make_power_2(new_w), make_power_2(new_h)
 
@@ -170,9 +169,7 @@ def __crop(img, size, pos):
     return img
 
 def __flip(img, flip):
-    if flip:
-        return img.transpose(Image.FLIP_LEFT_RIGHT)
-    return img
+    return img.transpose(Image.FLIP_LEFT_RIGHT) if flip else img
 
 def get_video_params(opt, n_frames_total, cur_seq_len, index):
     tG = opt.n_frames_G

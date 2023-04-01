@@ -15,4 +15,4 @@ if not os.path.isdir(chpt_path):
 """destination = os.path.join(chpt_path, file_name)
 download_file_from_google_drive(file_id, destination) 
 unzip_file(destination, chpt_path)"""
-os.system('cd %s/flownet2_pytorch/; bash install.sh; cd ../../' % chpt_path)
+os.system(f'cd {chpt_path}/flownet2_pytorch/; bash install.sh; cd ../../')

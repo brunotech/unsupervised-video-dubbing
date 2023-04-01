@@ -78,7 +78,7 @@ class FlowNetC(nn.Module):
 
         # FlownetC bottom input stream
         out_conv1b = self.conv1(x2)
-        
+
         out_conv2b = self.conv2(out_conv1b)
         out_conv3b = self.conv3(out_conv2b)
 
@@ -125,7 +125,4 @@ class FlowNetC(nn.Module):
 
         flow2 = self.predict_flow2(concat2)
 
-        if self.training:
-            return flow2,flow3,flow4,flow5,flow6
-        else:
-            return flow2,
+        return (flow2, flow3, flow4, flow5, flow6) if self.training else (flow2, )

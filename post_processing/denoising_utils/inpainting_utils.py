@@ -17,6 +17,4 @@ def get_text_mask(for_image, sz=20):
 
 def get_bernoulli_mask(for_image, zero_fraction=0.95):
     img_mask_np=(np.random.random_sample(size=pil_to_np(for_image).shape) > zero_fraction).astype(int)
-    img_mask = np_to_pil(img_mask_np)
-    
-    return img_mask
+    return np_to_pil(img_mask_np)

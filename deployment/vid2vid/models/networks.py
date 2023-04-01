@@ -26,19 +26,19 @@ def get_norm_layer(norm_type='instance'):
     elif norm_type == 'instance':
         norm_layer = functools.partial(nn.InstanceNorm2d, affine=False, track_running_stats=True)
     else:
-        raise NotImplementedError('normalization layer [%s] is not found' % norm_type)
+        raise NotImplementedError(f'normalization layer [{norm_type}] is not found')
     return norm_layer
 
 def define_G(input_nc, output_nc, prev_output_nc, ngf, which_model_netG, n_downsampling, norm, scale, gpu_ids=[], opt=[]):
-    netG = None    
+    netG = None
     norm_layer = get_norm_layer(norm_type=norm)
 
     if which_model_netG == 'global':        
-        netG = GlobalGenerator(input_nc, output_nc, ngf, n_downsampling, opt.n_blocks, norm_layer)            
+        netG = GlobalGenerator(input_nc, output_nc, ngf, n_downsampling, opt.n_blocks, norm_layer)
     elif which_model_netG == 'local':        
         netG = LocalEnhancer(input_nc, output_nc, ngf, n_downsampling, opt.n_blocks, opt.n_local_enhancers, opt.n_blocks_local, norm_layer)
     elif which_model_netG == 'global_with_features':    
-        netG = Global_with_z(input_nc, output_nc, opt.feat_num, ngf, n_downsampling, opt.n_blocks, norm_layer)     
+        netG = Global_with_z(input_nc, output_nc, opt.feat_num, ngf, n_downsampling, opt.n_blocks, norm_layer)
     elif which_model_netG == 'local_with_features':    
         netG = Local_with_z(input_nc, output_nc, opt.feat_num, ngf, n_downsampling, opt.n_blocks, opt.n_local_enhancers, opt.n_blocks_local, norm_layer)
 
@@ -46,11 +46,13 @@ def define_G(input_nc, output_nc, prev_output_nc, ngf, which_model_netG, n_downs
         netG = CompositeGenerator(opt, input_nc, output_nc, prev_output_nc, ngf, n_downsampling, opt.n_blocks, opt.fg, opt.no_flow, norm_layer)
     elif which_model_netG == 'compositeLocal':
         netG = CompositeLocalGenerator(opt, input_nc, output_nc, prev_output_nc, ngf, n_downsampling, opt.n_blocks_local, opt.fg, opt.no_flow, 
-                                       norm_layer, scale=scale)    
+                                       norm_layer, scale=scale)
     elif which_model_netG == 'encoder':
         netG = Encoder(input_nc, output_nc, ngf, n_downsampling, norm_layer)
     else:
-        raise NotImplementedError('Generator model name [%s] is not recognized' % which_model_netG)
+        raise NotImplementedError(
+            f'Generator model name [{which_model_netG}] is not recognized'
+        )
 
     #print_network(netG)
     if len(gpu_ids) > 0:
@@ -70,9 +72,7 @@ def define_D(input_nc, ndf, n_layers_D, norm='instance', num_D=1, getIntermFeat=
 def print_network(net):
     if isinstance(net, list):
         net = net[0]
-    num_params = 0
-    for param in net.parameters():
-        num_params += param.numel()
+    num_params = sum(param.numel() for param in net.parameters())
     print(net)
     print('Total number of parameters: %d' % num_params)
 
@@ -106,46 +106,50 @@ class BaseNetwork(nn.Module):
             return torch.nn.functional.grid_sample(input1, input2, mode='bilinear', padding_mode='border')
 
     def resample(self, image, flow):        
-        b, c, h, w = image.size()        
+        b, c, h, w = image.size()
         if not hasattr(self, 'grid') or self.grid.size() != flow.size():
-            self.grid = get_grid(b, h, w, gpu_id=flow.get_device(), dtype=flow.dtype)            
-        flow = torch.cat([flow[:, 0:1, :, :] / ((w - 1.0) / 2.0), flow[:, 1:2, :, :] / ((h - 1.0) / 2.0)], dim=1)        
+            self.grid = get_grid(b, h, w, gpu_id=flow.get_device(), dtype=flow.dtype)
+        flow = torch.cat([flow[:, 0:1, :, :] / ((w - 1.0) / 2.0), flow[:, 1:2, :, :] / ((h - 1.0) / 2.0)], dim=1)
         final_grid = (self.grid + flow).permute(0, 2, 3, 1).cuda(image.get_device())
-        output = self.grid_sample(image, final_grid)
-        return output
+        return self.grid_sample(image, final_grid)
 
 class CompositeGenerator(BaseNetwork):
     def __init__(self, opt, input_nc, output_nc, prev_output_nc, ngf, n_downsampling, n_blocks, use_fg_model=False, no_flow=False,
                 norm_layer=nn.BatchNorm2d, padding_type='reflect'):
         assert(n_blocks >= 0)
-        super(CompositeGenerator, self).__init__()                
+        super(CompositeGenerator, self).__init__()
         self.opt = opt
         self.n_downsampling = n_downsampling
         self.use_fg_model = use_fg_model
         self.no_flow = no_flow
         activation = nn.ReLU(True)
-        
+
         if use_fg_model:
             ### individial image generation
             ngf_indv = ngf // 2 if n_downsampling > 2 else ngf
             indv_nc = input_nc
             indv_down = [nn.ReflectionPad2d(3), nn.Conv2d(indv_nc, ngf_indv, kernel_size=7, padding=0), 
-                         norm_layer(ngf_indv), activation]        
+                         norm_layer(ngf_indv), activation]
             for i in range(n_downsampling):
                 mult = 2**i
                 indv_down += [nn.Conv2d(ngf_indv*mult, ngf_indv*mult*2, kernel_size=3, stride=2, padding=1), 
                               norm_layer(ngf_indv*mult*2), activation]
 
-            indv_res = []
             mult = 2**n_downsampling
-            for i in range(n_blocks):                
-                indv_res += [ResnetBlock(ngf_indv * mult, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
-            
+            indv_res = [
+                ResnetBlock(
+                    ngf_indv * mult,
+                    padding_type=padding_type,
+                    activation=activation,
+                    norm_layer=norm_layer,
+                )
+                for _ in range(n_blocks)
+            ]
             indv_up = []
             for i in range(n_downsampling):
                 mult = 2**(n_downsampling - i)            
                 indv_up += [nn.ConvTranspose2d(ngf_indv*mult, ngf_indv*mult//2, kernel_size=3, stride=2, padding=1, output_padding=1),
-                            norm_layer(ngf_indv*mult//2), activation]                                
+                            norm_layer(ngf_indv*mult//2), activation]
             indv_final = [nn.ReflectionPad2d(3), nn.Conv2d(ngf_indv, output_nc, kernel_size=7, padding=0), nn.Tanh()]        
 
         ### flow and image generation
@@ -157,15 +161,20 @@ class CompositeGenerator(BaseNetwork):
                                norm_layer(ngf * mult * 2), activation]  
 
         mult = 2**n_downsampling
-        for i in range(n_blocks - n_blocks//2):
+        for _ in range(n_blocks - n_blocks//2):
             model_down_seg += [ResnetBlock(ngf * mult, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
         model_down_img = [nn.ReflectionPad2d(3), nn.Conv2d(prev_output_nc, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation]
         model_down_img += copy.deepcopy(model_down_seg[4:])
-    
-        ### resnet blocks
-        model_res_img = []
-        for i in range(n_blocks//2):
-            model_res_img += [ResnetBlock(ngf * mult, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
+
+        model_res_img = [
+            ResnetBlock(
+                ngf * mult,
+                padding_type=padding_type,
+                activation=activation,
+                norm_layer=norm_layer,
+            )
+            for _ in range(n_blocks // 2)
+        ]
         if not no_flow:
             model_res_flow = copy.deepcopy(model_res_img)        
 
@@ -174,7 +183,7 @@ class CompositeGenerator(BaseNetwork):
         for i in range(n_downsampling):
             mult = 2**(n_downsampling - i)
             model_up_img += [nn.ConvTranspose2d(ngf*mult, ngf*mult//2, kernel_size=3, stride=2, padding=1, output_padding=1),
-                             norm_layer(ngf*mult//2), activation]                    
+                             norm_layer(ngf*mult//2), activation]
         model_final_img = [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]
 
         if not no_flow:
@@ -188,8 +197,8 @@ class CompositeGenerator(BaseNetwork):
             self.indv_up = nn.Sequential(*indv_up)
             self.indv_final = nn.Sequential(*indv_final)
 
-        self.model_down_seg = nn.Sequential(*model_down_seg)        
-        self.model_down_img = nn.Sequential(*model_down_img)        
+        self.model_down_seg = nn.Sequential(*model_down_seg)
+        self.model_down_img = nn.Sequential(*model_down_img)
         self.model_res_img = nn.Sequential(*model_res_img)
         self.model_up_img = nn.Sequential(*model_up_img)
         self.model_final_img = nn.Sequential(*model_final_img)
@@ -234,42 +243,51 @@ class CompositeGenerator(BaseNetwork):
 class CompositeLocalGenerator(BaseNetwork):
     def __init__(self, opt, input_nc, output_nc, prev_output_nc, ngf, n_downsampling, n_blocks_local, use_fg_model=False, no_flow=False,
                  norm_layer=nn.BatchNorm2d, padding_type='reflect', scale=1):        
-        super(CompositeLocalGenerator, self).__init__()                
+        super(CompositeLocalGenerator, self).__init__()
         self.opt = opt
         self.use_fg_model = use_fg_model
         self.no_flow = no_flow
-        self.scale = scale    
+        self.scale = scale
         activation = nn.ReLU(True)
-        
+
         if use_fg_model:
             ### individial image generation        
             ngf_indv = ngf // 2 if n_downsampling > 2 else ngf
             indv_down = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf_indv, kernel_size=7, padding=0), norm_layer(ngf_indv), activation,
                          nn.Conv2d(ngf_indv, ngf_indv*2, kernel_size=3, stride=2, padding=1), norm_layer(ngf_indv*2), activation]        
 
-            indv_up = []
-            for i in range(n_blocks_local):
-                indv_up += [ResnetBlock(ngf_indv*2, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]
-                    
+            indv_up = [
+                ResnetBlock(
+                    ngf_indv * 2,
+                    padding_type=padding_type,
+                    activation=activation,
+                    norm_layer=norm_layer,
+                )
+                for _ in range(n_blocks_local)
+            ]
             indv_up += [nn.ConvTranspose2d(ngf_indv*2, ngf_indv, kernel_size=3, stride=2, padding=1, output_padding=1),
-                        norm_layer(ngf_indv), activation]                            
+                        norm_layer(ngf_indv), activation]
             indv_final = [nn.ReflectionPad2d(3), nn.Conv2d(ngf_indv, output_nc, kernel_size=7, padding=0), nn.Tanh()]        
 
 
         ### flow and image generation
         ### downsample
         model_down_seg = [nn.ReflectionPad2d(3), nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation,
-                          nn.Conv2d(ngf, ngf*2, kernel_size=3, stride=2, padding=1), norm_layer(ngf*2), activation]                  
+                          nn.Conv2d(ngf, ngf*2, kernel_size=3, stride=2, padding=1), norm_layer(ngf*2), activation]
         model_down_img = [nn.ReflectionPad2d(3), nn.Conv2d(prev_output_nc, ngf, kernel_size=7, padding=0), norm_layer(ngf), activation,
                           nn.Conv2d(ngf, ngf*2, kernel_size=3, stride=2, padding=1), norm_layer(ngf*2), activation]        
 
-        ### resnet blocks
-        model_up_img = []        
-        for i in range(n_blocks_local):
-            model_up_img += [ResnetBlock(ngf*2, padding_type=padding_type, activation=activation, norm_layer=norm_layer)]            
-
+        model_up_img = [
+            ResnetBlock(
+                ngf * 2,
+                padding_type=padding_type,
+                activation=activation,
+                norm_layer=norm_layer,
+            )
+            for _ in range(n_blocks_local)
+        ]
         ### upsample        
-        up = [nn.ConvTranspose2d(ngf*2, ngf, kernel_size=3, stride=2, padding=1, output_padding=1), norm_layer(ngf), activation]        
+        up = [nn.ConvTranspose2d(ngf*2, ngf, kernel_size=3, stride=2, padding=1, output_padding=1), norm_layer(ngf), activation]
         model_up_img += up
         model_final_img = [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]
 
@@ -283,8 +301,8 @@ class CompositeLocalGenerator(BaseNetwork):
             self.indv_up = nn.Sequential(*indv_up)
             self.indv_final = nn.Sequential(*indv_final)
 
-        self.model_down_seg = nn.Sequential(*model_down_seg)        
-        self.model_down_img = nn.Sequential(*model_down_img)        
+        self.model_down_seg = nn.Sequential(*model_down_seg)
+        self.model_down_img = nn.Sequential(*model_down_img)
         self.model_up_img = nn.Sequential(*model_up_img)
         self.model_final_img = nn.Sequential(*model_final_img)
 
@@ -355,18 +373,17 @@ class GlobalGenerator(nn.Module):
     def forward(self, input, feat=None):
         if feat is not None:
             input = torch.cat([input, feat], dim=1)
-        output = self.model(input)                
-        return output
+        return self.model(input)
 
 class LocalEnhancer(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=32, n_downsample_global=3, n_blocks_global=9, 
                  n_local_enhancers=1, n_blocks_local=3, norm_layer=nn.BatchNorm2d, padding_type='reflect'):
         super(LocalEnhancer, self).__init__()
         self.n_local_enhancers = n_local_enhancers        
-        
+
         ###### global generator model #####           
         ngf_global = ngf * (2**n_local_enhancers)
-        model_global = GlobalGenerator(input_nc, output_nc, ngf_global, n_downsample_global, n_blocks_global, norm_layer).model        
+        model_global = GlobalGenerator(input_nc, output_nc, ngf_global, n_downsample_global, n_blocks_global, norm_layer).model
         model_global = [model_global[i] for i in range(len(model_global)-3)] # get rid of final convolution layers        
         self.model = nn.Sequential(*model_global)                
 
@@ -378,11 +395,14 @@ class LocalEnhancer(nn.Module):
                                 norm_layer(ngf_global), nn.ReLU(True),
                                 nn.Conv2d(ngf_global, ngf_global * 2, kernel_size=3, stride=2, padding=1), 
                                 norm_layer(ngf_global * 2), nn.ReLU(True)]
-            ### residual blocks
-            model_upsample = []
-            for i in range(n_blocks_local):
-                model_upsample += [ResnetBlock(ngf_global * 2, padding_type=padding_type, norm_layer=norm_layer)]
-
+            model_upsample = [
+                ResnetBlock(
+                    ngf_global * 2,
+                    padding_type=padding_type,
+                    norm_layer=norm_layer,
+                )
+                for _ in range(n_blocks_local)
+            ]
             ### upsample
             model_upsample += [nn.ConvTranspose2d(ngf_global * 2, ngf_global, kernel_size=3, stride=2, padding=1, output_padding=1), 
                                norm_layer(ngf_global), nn.ReLU(True)]      
@@ -391,12 +411,12 @@ class LocalEnhancer(nn.Module):
             if n == n_local_enhancers:                
                 model_final = [nn.ReflectionPad2d(3), nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0), nn.Tanh()]
                 model_upsample += model_final
-            
-            setattr(self, 'model'+str(n)+'_1', nn.Sequential(*model_downsample))
-            setattr(self, 'model'+str(n)+'_2', nn.Sequential(*model_upsample))            
+
+            setattr(self, f'model{str(n)}_1', nn.Sequential(*model_downsample))
+            setattr(self, f'model{str(n)}_2', nn.Sequential(*model_upsample))            
 
             ngf_global = ngf * (2**(n_local_enhancers-n)) * 2            
-        
+
         self.downsample = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)
 
     def forward(self, input, feat_map=None):
@@ -405,24 +425,25 @@ class LocalEnhancer(nn.Module):
 
         ### create input pyramid
         input_downsampled = [input]
-        for i in range(self.n_local_enhancers):
-            input_downsampled.append(self.downsample(input_downsampled[-1]))
-
+        input_downsampled.extend(
+            self.downsample(input_downsampled[-1])
+            for _ in range(self.n_local_enhancers)
+        )
         ### output at coarest level
-        output_prev = self.model(input_downsampled[-1])        
+        output_prev = self.model(input_downsampled[-1])
         ### build up one layer at a time
         for n_local_enhancers in range(1, self.n_local_enhancers+1):
-            model_downsample = getattr(self, 'model'+str(n_local_enhancers)+'_1')
-            model_upsample = getattr(self, 'model'+str(n_local_enhancers)+'_2')            
-            input_i = input_downsampled[self.n_local_enhancers-n_local_enhancers]            
-            output_prev = model_upsample(model_downsample(input_i) + output_prev)        
+            model_downsample = getattr(self, f'model{str(n_local_enhancers)}_1')
+            model_upsample = getattr(self, f'model{str(n_local_enhancers)}_2')
+            input_i = input_downsampled[self.n_local_enhancers-n_local_enhancers]
+            output_prev = model_upsample(model_downsample(input_i) + output_prev)
         return output_prev
 
 class Global_with_z(nn.Module):
     def __init__(self, input_nc, output_nc, nz, ngf=64, n_downsample_G=3, n_blocks=9,
                  norm_layer=nn.BatchNorm2d, padding_type='reflect'):
-        super(Global_with_z, self).__init__()                
-        self.n_downsample_G = n_downsample_G        
+        super(Global_with_z, self).__init__()
+        self.n_downsample_G = n_downsample_G
         max_ngf = 1024
         activation = nn.ReLU(True)
 
@@ -433,12 +454,15 @@ class Global_with_z(nn.Module):
             model_downsample += [nn.Conv2d(min(ngf * mult, max_ngf), min(ngf * mult * 2, max_ngf), kernel_size=3, stride=2, padding=1),
                                  norm_layer(min(ngf * mult * 2, max_ngf)), activation]
 
-        # internal model
-        model_resnet = []
         mult = 2 ** n_downsample_G
-        for i in range(n_blocks):
-            model_resnet += [ResnetBlock(min(ngf*mult, max_ngf) + nz, padding_type=padding_type, norm_layer=norm_layer)]
-
+        model_resnet = [
+            ResnetBlock(
+                min(ngf * mult, max_ngf) + nz,
+                padding_type=padding_type,
+                norm_layer=norm_layer,
+            )
+            for _ in range(n_blocks)
+        ]
         # upsample model        
         model_upsample = []
         for i in range(n_downsample_G):
@@ -452,17 +476,17 @@ class Global_with_z(nn.Module):
         model_upsample_conv = [nn.ReflectionPad2d(3), nn.Conv2d(ngf + nz, output_nc, kernel_size=7), nn.Tanh()]
 
         self.model_downsample = nn.Sequential(*model_downsample)
-        self.model_resnet = nn.Sequential(*model_resnet)        
+        self.model_resnet = nn.Sequential(*model_resnet)
         self.model_upsample = nn.Sequential(*model_upsample)
         self.model_upsample_conv = nn.Sequential(*model_upsample_conv)
         self.downsample = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)        
 
     def forward(self, x, z):
         z_downsample = z
-        for i in range(self.n_downsample_G):
+        for _ in range(self.n_downsample_G):
             z_downsample = self.downsample(z_downsample)
-        downsample = self.model_downsample(torch.cat([x, z], dim=1))                
-        resnet = self.model_resnet(torch.cat([downsample, z_downsample], dim=1))                
+        downsample = self.model_downsample(torch.cat([x, z], dim=1))
+        resnet = self.model_resnet(torch.cat([downsample, z_downsample], dim=1))
         upsample = self.model_upsample(torch.cat([resnet, z_downsample], dim=1))
         return self.model_upsample_conv(torch.cat([upsample, z], dim=1))
 
@@ -472,10 +496,10 @@ class Local_with_z(nn.Module):
         super(Local_with_z, self).__init__()
         self.n_local_enhancers = n_local_enhancers
         self.n_downsample_global = n_downsample_global
-        
+
         ###### global generator model #####           
         ngf_global = ngf * (2**n_local_enhancers)
-        model_global = Global_with_z(input_nc, output_nc, nz, ngf_global, n_downsample_global, n_blocks_global, norm_layer)        
+        model_global = Global_with_z(input_nc, output_nc, nz, ngf_global, n_downsample_global, n_blocks_global, norm_layer)
         self.model_downsample = model_global.model_downsample
         self.model_resnet = model_global.model_resnet
         self.model_upsample = model_global.model_upsample
@@ -490,20 +514,22 @@ class Local_with_z(nn.Module):
                                 norm_layer(ngf_global), nn.ReLU(True),
                                 nn.Conv2d(ngf_global, ngf_global * 2, kernel_size=3, stride=2, padding=1), 
                                 norm_layer(ngf_global * 2), nn.ReLU(True)]
-            ### residual blocks
-            model_upsample = []
             input_ngf = ngf_global * 2
             if n == 1:            
                 input_ngf += nz
-            for i in range(n_blocks_local):
-                model_upsample += [ResnetBlock(input_ngf, padding_type=padding_type, norm_layer=norm_layer)]
+            model_upsample = [
+                ResnetBlock(
+                    input_ngf, padding_type=padding_type, norm_layer=norm_layer
+                )
+                for _ in range(n_blocks_local)
+            ]
             ### upsample            
             model_upsample += [nn.ConvTranspose2d(input_ngf, ngf_global, kernel_size=3, stride=2, padding=1, output_padding=1), 
                                norm_layer(ngf_global), nn.ReLU(True)]              
-            
-            setattr(self, 'model'+str(n)+'_1', nn.Sequential(*model_downsample))
-            setattr(self, 'model'+str(n)+'_2', nn.Sequential(*model_upsample))                  
-        
+
+            setattr(self, f'model{str(n)}_1', nn.Sequential(*model_downsample))
+            setattr(self, f'model{str(n)}_2', nn.Sequential(*model_upsample))                  
+
         ### final convolution        
         model_final = [nn.ReflectionPad2d(3), nn.Conv2d(ngf + nz, output_nc, kernel_size=7), nn.Tanh()]
         self.model_final = nn.Sequential(*model_final)
@@ -512,33 +538,34 @@ class Local_with_z(nn.Module):
     def forward(self, input, z): 
         ### create input pyramid
         input_downsampled = [input]
-        for i in range(self.n_local_enhancers):
-            input_downsampled.append(self.downsample(input_downsampled[-1]))
-
+        input_downsampled.extend(
+            self.downsample(input_downsampled[-1])
+            for _ in range(self.n_local_enhancers)
+        )
         ### create downsampled z
         z_downsampled_local = z
-        for i in range(self.n_local_enhancers):
+        for _ in range(self.n_local_enhancers):
             z_downsampled_local = self.downsample(z_downsampled_local)
         z_downsampled_global = z_downsampled_local
-        for i in range(self.n_downsample_global):
+        for _ in range(self.n_downsample_global):
             z_downsampled_global = self.downsample(z_downsampled_global)
 
         ### output at coarest level
         x = input_downsampled[-1]
-        global_downsample = self.model_downsample(torch.cat([x, z_downsampled_local], dim=1))                
-        global_resnet = self.model_resnet(torch.cat([global_downsample, z_downsampled_global], dim=1))                
+        global_downsample = self.model_downsample(torch.cat([x, z_downsampled_local], dim=1))
+        global_resnet = self.model_resnet(torch.cat([global_downsample, z_downsampled_global], dim=1))
         global_upsample = self.model_upsample(torch.cat([global_resnet, z_downsampled_global], dim=1))
 
         ### build up one layer at a time
         output_prev = global_upsample
         for n_local_enhancers in range(1, self.n_local_enhancers+1):
             # fetch models
-            model_downsample = getattr(self, 'model'+str(n_local_enhancers)+'_1')
-            model_upsample = getattr(self, 'model'+str(n_local_enhancers)+'_2')            
+            model_downsample = getattr(self, f'model{str(n_local_enhancers)}_1')
+            model_upsample = getattr(self, f'model{str(n_local_enhancers)}_2')
             # get input image
             input_i = input_downsampled[self.n_local_enhancers-n_local_enhancers]
             if n_local_enhancers == self.n_local_enhancers:
-                input_i = torch.cat([input_i, z], dim=1)            
+                input_i = torch.cat([input_i, z], dim=1)
             # combine features from different resolutions
             combined_input = model_downsample(input_i) + output_prev
             if n_local_enhancers == 1:
@@ -546,9 +573,7 @@ class Local_with_z(nn.Module):
             # upsample features
             output_prev = model_upsample(combined_input)
 
-        # final convolution
-        output = self.model_final(torch.cat([output_prev, z], dim=1))
-        return output 
+        return self.model_final(torch.cat([output_prev, z], dim=1)) 
 
 # Define a resnet block
 class ResnetBlock(nn.Module):
@@ -566,7 +591,7 @@ class ResnetBlock(nn.Module):
         elif padding_type == 'zero':
             p = 1
         else:
-            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
+            raise NotImplementedError(f'padding [{padding_type}] is not implemented')
 
         conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p),
                        norm_layer(dim),
@@ -582,15 +607,14 @@ class ResnetBlock(nn.Module):
         elif padding_type == 'zero':
             p = 1
         else:
-            raise NotImplementedError('padding [%s] is not implemented' % padding_type)
+            raise NotImplementedError(f'padding [{padding_type}] is not implemented')
         conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p),
                        norm_layer(dim)]
 
         return nn.Sequential(*conv_block)
 
     def forward(self, x):
-        out = x + self.conv_block(x)
-        return out
+        return x + self.conv_block(x)
 
 class Encoder(nn.Module):
     def __init__(self, input_nc, output_nc, ngf=32, n_downsampling=4, norm_layer=nn.BatchNorm2d):
@@ -639,26 +663,24 @@ class MultiscaleDiscriminator(nn.Module):
         self.n_layers = n_layers
         self.getIntermFeat = getIntermFeat
         ndf_max = 64
-     
+
         for i in range(num_D):
             netD = NLayerDiscriminator(input_nc, min(ndf_max, ndf*(2**(num_D-1-i))), n_layers, norm_layer,
                                        getIntermFeat)
-            if getIntermFeat:                                
+            if getIntermFeat:                        
                 for j in range(n_layers+2):
-                    setattr(self, 'scale'+str(i)+'_layer'+str(j), getattr(netD, 'model'+str(j)))                
+                    setattr(self, f'scale{str(i)}_layer{str(j)}', getattr(netD, f'model{str(j)}'))
             else:
-                setattr(self, 'layer'+str(i), netD.model)
+                setattr(self, f'layer{str(i)}', netD.model)
 
         self.downsample = nn.AvgPool2d(3, stride=2, padding=[1, 1], count_include_pad=False)        
 
     def singleD_forward(self, model, input):
-        if self.getIntermFeat:
-            result = [input]            
-            for i in range(len(model)):
-                result.append(model[i](result[-1]))            
-            return result[1:]
-        else:
+        if not self.getIntermFeat:
             return [model(input)]
+        result = [input]
+        result.extend(model[i](result[-1]) for i in range(len(model)))
+        return result[1:]
 
     def forward(self, input):        
         num_D = self.num_D
@@ -666,12 +688,15 @@ class MultiscaleDiscriminator(nn.Module):
         input_downsampled = input
         for i in range(num_D):
             if self.getIntermFeat:
-                model = [getattr(self, 'scale'+str(num_D-1-i)+'_layer'+str(j)) for j in range(self.n_layers+2)]
+                model = [
+                    getattr(self, f'scale{str(num_D - 1 - i)}_layer{str(j)}')
+                    for j in range(self.n_layers + 2)
+                ]
             else:
-                model = getattr(self, 'layer'+str(num_D-1-i))                                
+                model = getattr(self, f'layer{str(num_D - 1 - i)}')
             result.append(self.singleD_forward(model, input_downsampled))
             if i != (num_D-1):
-                input_downsampled = self.downsample(input_downsampled)                    
+                input_downsampled = self.downsample(input_downsampled)
         return result
 
 
@@ -687,7 +712,7 @@ class NLayerDiscriminator(nn.Module):
         sequence = [[nn.Conv2d(input_nc, ndf, kernel_size=kw, stride=2, padding=padw), nn.LeakyReLU(0.2, True)]]
 
         nf = ndf
-        for n in range(1, n_layers):
+        for _ in range(1, n_layers):
             nf_prev = nf
             nf = min(nf * 2, 512)
             sequence += [[
@@ -707,22 +732,21 @@ class NLayerDiscriminator(nn.Module):
 
         if getIntermFeat:
             for n in range(len(sequence)):
-                setattr(self, 'model'+str(n), nn.Sequential(*sequence[n]))
+                setattr(self, f'model{str(n)}', nn.Sequential(*sequence[n]))
         else:
             sequence_stream = []
-            for n in range(len(sequence)):
-                sequence_stream += sequence[n]
+            for item in sequence:
+                sequence_stream += item
             self.model = nn.Sequential(*sequence_stream)            
 
     def forward(self, input):
-        if self.getIntermFeat:
-            res = [input]
-            for n in range(self.n_layers+2):
-                model = getattr(self, 'model'+str(n))
-                res.append(model(res[-1]))
-            return res[1:]
-        else:
-            return self.model(input)        
+        if not self.getIntermFeat:
+            return self.model(input)
+        res = [input]
+        for n in range(self.n_layers+2):
+            model = getattr(self, f'model{str(n)}')
+            res.append(model(res[-1]))
+        return res[1:]        
 
 
 ##############################################################################
@@ -736,14 +760,11 @@ class GANLoss(nn.Module):
         self.fake_label = target_fake_label
         self.real_label_var = None
         self.fake_label_var = None
-        self.Tensor = tensor        
-        if use_lsgan:
-            self.loss = nn.MSELoss()
-        else:
-            self.loss = nn.BCELoss()
+        self.Tensor = tensor
+        self.loss = nn.MSELoss() if use_lsgan else nn.BCELoss()
 
     def get_target_tensor(self, input, target_is_real):
-        target_tensor = None        
+        target_tensor = None
         gpu_id = input.get_device()
         if target_is_real:
             create_label = ((self.real_label_var is None) or
@@ -751,15 +772,14 @@ class GANLoss(nn.Module):
             if create_label:
                 real_tensor = self.Tensor(input.size()).cuda(gpu_id).fill_(self.real_label)
                 self.real_label_var = Variable(real_tensor, requires_grad=False)
-            target_tensor = self.real_label_var
+            return self.real_label_var
         else:
             create_label = ((self.fake_label_var is None) or
                             (self.fake_label_var.numel() != input.numel()))
             if create_label:
                 fake_tensor = self.Tensor(input.size()).cuda(gpu_id).fill_(self.fake_label)
                 self.fake_label_var = Variable(fake_tensor, requires_grad=False)
-            target_tensor = self.fake_label_var
-        return target_tensor
+            return self.fake_label_var
 
     def __call__(self, input, target_is_real):
         if isinstance(input[0], list):
@@ -785,10 +805,10 @@ class VGGLoss(nn.Module):
         while x.size()[3] > 1024:
             x, y = self.downsample(x), self.downsample(y)
         x_vgg, y_vgg = self.vgg(x), self.vgg(y)
-        loss = 0
-        for i in range(len(x_vgg)):
-            loss += self.weights[i] * self.criterion(x_vgg[i], y_vgg[i].detach())        
-        return loss
+        return sum(
+            self.weights[i] * self.criterion(x_vgg[i], y_vgg[i].detach())
+            for i in range(len(x_vgg))
+        )
 
 class CrossEntropyLoss(nn.Module):
     def __init__(self, label_nc):
@@ -808,8 +828,7 @@ class MaskedL1Loss(nn.Module):
 
     def forward(self, input, target, mask):        
         mask = mask.expand(-1, input.size()[1], -1, -1)
-        loss = self.criterion(input * mask, target * mask)
-        return loss
+        return self.criterion(input * mask, target * mask)
 
 class MultiscaleL1Loss(nn.Module):
     def __init__(self, scale=5):
@@ -862,9 +881,8 @@ class Vgg19(nn.Module):
 
     def forward(self, X):
         h_relu1 = self.slice1(X)
-        h_relu2 = self.slice2(h_relu1)        
-        h_relu3 = self.slice3(h_relu2)        
-        h_relu4 = self.slice4(h_relu3)        
-        h_relu5 = self.slice5(h_relu4)                
-        out = [h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]
-        return out
+        h_relu2 = self.slice2(h_relu1)
+        h_relu3 = self.slice3(h_relu2)
+        h_relu4 = self.slice4(h_relu3)
+        h_relu5 = self.slice5(h_relu4)
+        return [h_relu1, h_relu2, h_relu3, h_relu4, h_relu5]

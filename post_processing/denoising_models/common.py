@@ -17,10 +17,7 @@ class Concat(nn.Module):
             self.add_module(str(idx), module)
 
     def forward(self, input):
-        inputs = []
-        for module in self._modules.values():
-            inputs.append(module(input))
-
+        inputs = [module(input) for module in self._modules.values()]
         inputs_shapes2 = [x.shape[2] for x in inputs]
         inputs_shapes3 = [x.shape[3] for x in inputs]        
 
@@ -55,9 +52,7 @@ class GenNoise(nn.Module):
         b = torch.zeros(a).type_as(input.data)
         b.normal_()
 
-        x = torch.autograd.Variable(b)
-
-        return x
+        return torch.autograd.Variable(b)
 
 
 class Swish(nn.Module):
@@ -77,19 +72,18 @@ def act(act_fun = 'LeakyReLU'):
     '''
         Either string defining an activation function or module (e.g. nn.ReLU)
     '''
-    if isinstance(act_fun, str):
-        if act_fun == 'LeakyReLU':
-            return nn.LeakyReLU(0.2, inplace=True)
-        elif act_fun == 'Swish':
-            return Swish()
-        elif act_fun == 'ELU':
-            return nn.ELU()
-        elif act_fun == 'none':
-            return nn.Sequential()
-        else:
-            assert False
-    else:
+    if not isinstance(act_fun, str):
         return act_fun()
+    if act_fun == 'LeakyReLU':
+        return nn.LeakyReLU(0.2, inplace=True)
+    elif act_fun == 'Swish':
+        return Swish()
+    elif act_fun == 'ELU':
+        return nn.ELU()
+    elif act_fun == 'none':
+        return nn.Sequential()
+    else:
+        assert False
 
 
 def bn(num_features):

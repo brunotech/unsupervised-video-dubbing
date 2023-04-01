@@ -24,30 +24,31 @@ def setColor(im, yy, xx, color):
         im[yy, xx] = color[0]
 
 def drawEdge(im, x, y, bw=1, color=(255,255,255), draw_end_points=False):
-    if x is not None and x.size:
-        h, w = im.shape[0], im.shape[1]
-        # edge
-        for i in range(-bw, bw):
-            for j in range(-bw, bw):
-                yy = np.maximum(0, np.minimum(h-1, y+i))
-                xx = np.maximum(0, np.minimum(w-1, x+j))
-                setColor(im, yy, xx, color)
+    if x is None or not x.size:
+        return
+    h, w = im.shape[0], im.shape[1]
+    # edge
+    for i in range(-bw, bw):
+        for j in range(-bw, bw):
+            yy = np.maximum(0, np.minimum(h-1, y+i))
+            xx = np.maximum(0, np.minimum(w-1, x+j))
+            setColor(im, yy, xx, color)
 
-        # edge endpoints
-        if draw_end_points:
-            for i in range(-bw*2, bw*2):
-                for j in range(-bw*2, bw*2):
-                    if (i**2) + (j**2) < (4 * bw**2):
-                        yy = np.maximum(0, np.minimum(h-1, np.array([y[0], y[-1]])+i))
-                        xx = np.maximum(0, np.minimum(w-1, np.array([x[0], x[-1]])+j))
-                        setColor(im, yy, xx, color)
+    # edge endpoints
+    if draw_end_points:
+        for i in range(-bw*2, bw*2):
+            for j in range(-bw*2, bw*2):
+                if (i**2) + (j**2) < (4 * bw**2):
+                    yy = np.maximum(0, np.minimum(h-1, np.array([y[0], y[-1]])+i))
+                    xx = np.maximum(0, np.minimum(w-1, np.array([x[0], x[-1]])+j))
+                    setColor(im, yy, xx, color)
 
 def interpPoints(x, y):    
     if abs(x[:-1] - x[1:]).max() < abs(y[:-1] - y[1:]).max():
         curve_y, curve_x = interpPoints(y, x)
         if curve_y is None:
             return None, None
-    else:        
+    else:    
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")    
             if len(x) < 3:
@@ -60,10 +61,7 @@ def interpPoints(x, y):
             x = list(reversed(x))
             y = list(reversed(y))
         curve_x = np.linspace(x[0], x[-1], (x[-1]-x[0]))
-        if len(x) < 3:
-            curve_y = linear(curve_x, *popt)
-        else:
-            curve_y = func(curve_x, *popt)
+        curve_y = linear(curve_x, *popt) if len(x) < 3 else func(curve_x, *popt)
     return curve_x.astype(int), curve_y.astype(int)
 
 def read_keypoints(json_input, size, random_drop_prob=0, remove_face_labels=False, basic_point_only=False):
@@ -108,7 +106,7 @@ def connect_keypoints(pts, edge_lists, size, random_drop_prob, remove_face_label
     w, h = size
     output_edges = np.zeros((h, w, 3), np.uint8)
     pose_edge_list, pose_color_list, hand_edge_list, hand_color_list, face_list = edge_lists
-    
+
     if random_drop_prob > 0 and remove_face_labels:
         # add random noise to keypoints
         pose_pts[[0,15,16,17,18], :] += 5 * np.random.randn(5,2)
@@ -123,20 +121,20 @@ def connect_keypoints(pts, edge_lists, size, random_drop_prob, remove_face_label
             drawEdge(output_edges, curve_x, curve_y, bw=3, color=pose_color_list[i], draw_end_points=True)
 
     if not basic_point_only:
-        ### hand       
+        ### hand
         for hand_pts in [hand_pts_l, hand_pts_r]:     # for left and right hand
             if np.random.rand() > random_drop_prob:
                 for i, edge in enumerate(hand_edge_list): # for each finger
-                    for j in range(0, len(edge)-1):       # for each part of the finger
+                    for j in range(len(edge)-1):       # for each part of the finger
                         sub_edge = edge[j:j+2] 
                         x, y = hand_pts[sub_edge, 0], hand_pts[sub_edge, 1]                    
                         if 0 not in x:
                             line_x, line_y = interpPoints(x, y)                                        
                             drawEdge(output_edges, line_x, line_y, bw=1, color=hand_color_list[i], draw_end_points=True)
 
-        ### face
-        edge_len = 2
         if (np.random.rand() > random_drop_prob):
+            ### face
+            edge_len = 2
             for edge_list in face_list:
                 for edge in edge_list:
                     for i in range(0, max(1, len(edge)-1), edge_len-1):             

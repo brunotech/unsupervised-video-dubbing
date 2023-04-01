@@ -38,7 +38,7 @@ keys = {'TARGET_WIDTH': width,
 
 template = '\n'.join(np.loadtxt(args.prototxt_template, dtype=str, delimiter='\n'))
 for k in keys:
-    template = template.replace('$%s$'%(k),str(keys[k]))
+    template = template.replace(f'${k}$', str(keys[k]))
 
 prototxt = tempfile.NamedTemporaryFile(mode='w', delete=True)
 prototxt.write(template)
@@ -132,6 +132,8 @@ elif 'FlowNet2-SD/' in args.caffe_model:
     torch.save(state, os.path.join(args.flownet2_pytorch, 'FlowNet2-SD_checkpoint.pth.tar'))
 
 else:
-    print(('model type cound not be determined from input caffe model %s'%(args.caffe_model)))
+    print(
+        f'model type cound not be determined from input caffe model {args.caffe_model}'
+    )
     quit()
 print(("done converting ", args.caffe_model))

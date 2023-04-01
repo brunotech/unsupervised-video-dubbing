@@ -22,14 +22,14 @@ class LRW():
         self.root_path = root_path
         with open(self.labels_file) as myfile:
             self.data_dir = myfile.read().splitlines()
-            
-        self.video_file = os.path.join(self.root_path, 'video_' + self.folds+ '.npy')
-        self.audio_file = os.path.join(self.root_path, 'audio_' + self.folds +'.npy')
-  
+
+        self.video_file = os.path.join(self.root_path, f'video_{self.folds}.npy')
+        self.audio_file = os.path.join(self.root_path, f'audio_{self.folds}.npy')
+
         self.video = npy_loader(self.video_file)
         self.audio = npy_loader(self.audio_file)
-        
-        print('Loading {} part'.format(self.folds))
+
+        print(f'Loading {self.folds} part')
 
     def __len__(self):
         return self.video.shape[0]
@@ -44,11 +44,11 @@ class LRW():
         keypoints_move = keypoints * 0.7
         ones = torch.ones(keypoints.shape, dtype = torch.float)
         randint = torch.randint(1,73,(1,),dtype = torch.float)
-        if self.folds == 'train':
-            d = keypoints_move + ones * randint
-        else:
-            d = keypoints_move + ones * 38
-        return d
+        return (
+            keypoints_move + ones * randint
+            if self.folds == 'train'
+            else keypoints_move + ones * 38
+        )
 
 def npy_loader(file):
     return torch.tensor(np.load(file)).float()
